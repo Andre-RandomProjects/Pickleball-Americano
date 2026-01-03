@@ -62,7 +62,6 @@
       padding: 15px;
       margin-top: 18px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-      position: relative;
       transition: opacity 0.3s, background 0.3s;
     }
 
@@ -71,27 +70,36 @@
       background: #eef6ee;
     }
 
-    .round h3 {
-      margin: 0 0 8px 0;
+    /* ✅ HEADER LAYOUT */
+    .round-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
       border-bottom: 1px solid #eee;
       padding-bottom: 6px;
-    }
-
-    .complete-toggle {
-      position: absolute;
-      top: 12px;
-      right: 12px;
-      font-size: 14px;
-    }
-
-   /* Mobile fix */
-   @media (max-width: 480px) {
-     .complete-toggle {
-      position: static;
-      display: block;
       margin-bottom: 8px;
+    }
+
+    .round-header h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    /* ✅ CHECKBOX FIX */
+    .complete-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;          /* SMALL, CONTROLLED SPACE */
       font-size: 14px;
-      } 
+      font-weight: normal;
+      white-space: nowrap;
+      cursor: pointer;
+      margin-left: auto;
+    }
+
+    .complete-toggle input {
+      margin: 0;         /* REMOVE BROWSER DEFAULT */
     }
 
     .courts {
@@ -133,14 +141,12 @@
       color: #666;
     }
 
-    /* Tablet */
     @media (min-width: 600px) {
       .courts {
         grid-template-columns: repeat(2, 1fr);
       }
     }
 
-    /* Desktop */
     @media (min-width: 900px) {
       .courts {
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -182,10 +188,9 @@ function toggleCompleted(checkbox) {
 function confirmGenerate() {
   const output = document.getElementById("output");
   if (output.children.length > 0) {
-    const ok = confirm(
-      "This will generate a new schedule and clear the current one.\n\nDo you want to continue?"
-    );
-    if (!ok) return;
+    if (!confirm("This will generate a new schedule and clear the current one.\n\nContinue?")) {
+      return;
+    }
   }
   generate();
 }
@@ -195,7 +200,7 @@ function generate() {
   const allPlayers = document.getElementById("players").value
     .split("\n")
     .map(p => p.trim())
-    .filter(p => p !== "");
+    .filter(Boolean);
 
   const perRound = courts * 4;
 
@@ -205,7 +210,6 @@ function generate() {
   }
 
   const rounds = allPlayers.length;
-
   const sitOutQueue = [...allPlayers];
   shuffle(sitOutQueue);
 
@@ -213,24 +217,23 @@ function generate() {
   output.innerHTML = "";
 
   for (let r = 0; r < rounds; r++) {
-
     const sitOutCount = Math.max(0, allPlayers.length - perRound);
     const sitOutPlayers = sitOutQueue.splice(0, sitOutCount);
 
-    const activePlayers = allPlayers.filter(
-      p => !sitOutPlayers.includes(p)
-    );
-
+    const activePlayers = allPlayers.filter(p => !sitOutPlayers.includes(p));
     shuffle(activePlayers);
 
     const roundDiv = document.createElement("div");
     roundDiv.className = "round";
 
     roundDiv.innerHTML = `
-      <label class="complete-toggle">
-        <input type="checkbox" onchange="toggleCompleted(this)"> Completed
-      </label>
-      <h3>Round ${r + 1}</h3>
+      <div class="round-header">
+        <h3>Round ${r + 1}</h3>
+        <label class="complete-toggle">
+          <input type="checkbox" onchange="toggleCompleted(this)">
+          <span>Done</span>
+        </label>
+      </div>
     `;
 
     const courtsDiv = document.createElement("div");
@@ -239,26 +242,24 @@ function generate() {
     for (let c = 0; c < courts; c++) {
       const p = activePlayers.slice(c * 4, c * 4 + 4);
 
-      const courtDiv = document.createElement("div");
-      courtDiv.className = "court";
-
-      courtDiv.innerHTML = `
-        <div class="court-title">Court ${c + 1}</div>
-        <div class="team">${p[0]} & ${p[2]}</div>
-        <div class="vs">VS</div>
-        <div class="team">${p[1]} & ${p[3]}</div>
+      courtsDiv.innerHTML += `
+        <div class="court">
+          <div class="court-title">Court ${c + 1}</div>
+          <div class="team">${p[0]} & ${p[2]}</div>
+          <div class="vs">VS</div>
+          <div class="team">${p[1]} & ${p[3]}</div>
+        </div>
       `;
-
-      courtsDiv.appendChild(courtDiv);
     }
 
     roundDiv.appendChild(courtsDiv);
 
     if (sitOutPlayers.length) {
-      const sitOutDiv = document.createElement("div");
-      sitOutDiv.className = "sitout";
-      sitOutDiv.innerHTML = `<strong>Sit out:</strong> ${sitOutPlayers.join(", ")}`;
-      roundDiv.appendChild(sitOutDiv);
+      roundDiv.innerHTML += `
+        <div class="sitout">
+          <strong>Sit out:</strong> ${sitOutPlayers.join(", ")}
+        </div>
+      `;
     }
 
     output.appendChild(roundDiv);
@@ -268,5 +269,4 @@ function generate() {
 </script>
 
 </body>
-
 </html>
