@@ -41,7 +41,7 @@ button { padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-
 <h2>PickleBall</h2>
 
 <label>Match Type</label>
-<select id="mode" onchange="updateLabel()">
+<select id="mode" onchange="switchMode()">
   <option value="doubles">Singles or Teams</option>
   <option value="mixed">Doubles (Americano Single Entry)</option>
 </select>
@@ -63,12 +63,17 @@ button { padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-
 <script>
 let matchesData = [];
 
-function updateLabel() {
+// Update label and clear rounds when switching mode
+function switchMode(){
   const mode = document.getElementById("mode").value;
   const label = document.getElementById("playerLabel");
   label.textContent = mode === "doubles" ?
     "Enter player names or teams (one entry per line)" :
     "Enter players (one entry per line)";
+  
+  // Clear existing rounds when switching
+  document.getElementById("output").innerHTML="";
+  matchesData=[];
 }
 
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } }
@@ -138,7 +143,8 @@ function generateAmericanoRounds(players, courts){
   let sitQueue = [...players];
   shuffle(sitQueue);
 
-  for(let r=0;r<players.length;r++){
+  const totalRounds = players.length; // loop entries.length times
+  for(let r=0;r<totalRounds;r++){
     let sitOut = sitQueue.splice(0, Math.max(0, sitQueue.length-maxPlayers));
     let active = players.filter(p=>!sitOut.includes(p));
     shuffle(active);
