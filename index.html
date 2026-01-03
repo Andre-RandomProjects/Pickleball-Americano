@@ -84,6 +84,16 @@
       font-size: 14px;
     }
 
+   /* Mobile fix */
+   @media (max-width: 480px) {
+     .complete-toggle {
+      position: static;
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      } 
+    }
+
     .courts {
       display: grid;
       grid-template-columns: 1fr;
@@ -258,4 +268,5 @@ function generate() {
 </script>
 
 </body>
+
 </html>
