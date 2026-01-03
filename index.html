@@ -1,300 +1,202 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pickleball Americano Generator</title>
-
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      padding: 15px;
-      margin: 0;
-    }
-
-    .container {
-      max-width: 900px;
-      margin: auto;
-    }
-
-    h2 {
-      margin-top: 0;
-    }
-
-    label {
-      font-weight: bold;
-    }
-
-    textarea, input {
-      font-size: 16px;
-      width: 100%;
-      box-sizing: border-box;
-      margin-top: 6px;
-    }
-
-    textarea {
-      height: 160px;
-    }
-
-    input[type="number"] {
-      max-width: 120px;
-    }
-
-    /* ✅ BUTTON ROW */
-    .button-row {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 12px;
-    }
-
-    button {
-      padding: 12px;
-      cursor: pointer;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
-      font-weight: bold;
-      flex: 1;
-      min-width: 160px;
-    }
-
-    .generate-btn {
-      background: #1976d2;
-      color: white;
-    }
-
-    .generate-btn:hover {
-      background: #125ea7;
-    }
-
-    .reset-btn {
-      background: #e53935;
-      color: white;
-    }
-
-    .reset-btn:hover {
-      background: #c62828;
-    }
-
-    .round {
-      background: #ffffff;
-      border-radius: 10px;
-      padding: 15px;
-      margin-top: 18px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-      transition: opacity 0.3s, background 0.3s;
-    }
-
-    .round.completed {
-      opacity: 0.6;
-      background: #eef6ee;
-    }
-
-    .round-header {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-      border-bottom: 1px solid #eee;
-      padding-bottom: 6px;
-      margin-bottom: 8px;
-    }
-
-    .round-header h3 {
-      margin: 0;
-      font-size: 18px;
-    }
-
-    .complete-toggle {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      font-size: 14px;
-      white-space: nowrap;
-      cursor: pointer;
-      margin-left: auto;
-    }
-
-    .complete-toggle input {
-      margin: 0;
-    }
-
-    .courts {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .court {
-      background: #f9fafb;
-      border-radius: 8px;
-      padding: 10px;
-      text-align: center;
-      border: 1px solid #e3e6ea;
-    }
-
-    .court-title {
-      font-weight: bold;
-      margin-bottom: 6px;
-    }
-
-    .team {
-      padding: 8px;
-      border-radius: 6px;
-      margin: 4px 0;
-      background: #eaf2ff;
-    }
-
-    .vs {
-      font-weight: bold;
-      margin: 4px 0;
-      color: #555;
-    }
-
-    .sitout {
-      margin-top: 10px;
-      font-style: italic;
-      color: #666;
-    }
-
-    @media (min-width: 600px) {
-      .courts {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    @media (min-width: 900px) {
-      .courts {
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pickleball Americano Generator</title>
+<style>
+body { font-family: Arial, sans-serif; background: #f4f6f8; padding: 15px; margin: 0; }
+.container { max-width: 1000px; margin: auto; }
+h2 { margin-top: 0; }
+label { font-weight: bold; }
+textarea, input, select { font-size: 16px; width: 100%; box-sizing: border-box; margin-top: 6px; }
+textarea { height: 160px; }
+input[type="number"] { max-width: 120px; }
+.button-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+button { padding: 12px; border: none; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; flex: 1; min-width: 160px; }
+.generate-btn { background: #1976d2; color: white; }
+.reset-btn { background: #e53935; color: white; }
+.round { background: white; border-radius: 10px; padding: 15px; margin-top: 18px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+.round.completed { opacity: 0.6; }
+.round-header { display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #eee; padding-bottom: 6px; }
+.round-header h3 { margin: 0; }
+.complete-toggle { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 14px; white-space: nowrap; }
+.courts { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
+.court { background: #f9fafb; border-radius: 8px; padding: 10px; border: 1px solid #e3e6ea; text-align: center; }
+.court-title { font-weight: bold; margin-bottom: 6px; }
+.team { background: #eaf2ff; padding: 6px; border-radius: 6px; margin: 4px 0; }
+.vs { font-weight: bold; margin: 4px 0; }
+.score-inputs { display: flex; justify-content: center; gap: 6px; margin-top: 6px; }
+.score-inputs input { width: 50px; text-align: center; font-weight: bold; }
+.sitout { margin-top: 10px; font-style: italic; color: #666; }
+.rankings { background: white; border-radius: 10px; padding: 15px; margin-top: 25px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); }
+.rankings table { width: 100%; border-collapse: collapse; }
+.rankings th, .rankings td { padding: 8px; border-bottom: 1px solid #eee; text-align: left; }
+.rankings th { background: #f1f3f5; }
+@media (min-width: 700px) { .courts { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); } }
+</style>
 </head>
 <body>
-
 <div class="container">
-
 <h2>🏓 Pickleball Americano Generator</h2>
+
+<label>Mode</label>
+<select id="mode">
+  <option value="doubles">Doubles (teams entered manually)</option>
+  <option value="mixed">Mixed Doubles (random)</option>
+</select>
 
 <label>Number of courts</label>
 <input type="number" id="courts" value="2">
 
-<label>Player names (one per line)</label>
+<label>Player names / Teams</label>
 <textarea id="players"></textarea>
 
 <div class="button-row">
-  <button class="generate-btn" onclick="confirmGenerate()">Generate Schedule</button>
+  <button class="generate-btn" onclick="confirmGenerate()">Generate</button>
   <button class="reset-btn" onclick="resetApp()">Reset</button>
 </div>
 
 <div id="output"></div>
-
 </div>
 
 <script>
-function shuffle(array) {
-  for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [array[i], array[j]] = [array[j], array[i]];
-  }
-}
+let matchesData = [];
 
-function toggleCompleted(checkbox) {
-  checkbox.closest(".round")
-    .classList.toggle("completed", checkbox.checked);
-}
+function shuffle(arr) { for (let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } }
 
 function confirmGenerate() {
-  const output = document.getElementById("output");
-  if (output.children.length > 0) {
-    if (!confirm("Generate a new schedule and clear the current one?")) return;
-  }
+  if (document.getElementById("output").children.length &&
+      !confirm("Generate a new schedule and clear current data?")) return;
   generate();
 }
 
 function resetApp() {
-  if (!confirm("This will clear everything and reset the app.\n\nContinue?")) return;
-
-  localStorage.clear();
-  document.getElementById("players").value = "";
-  document.getElementById("courts").value = 2;
-  document.getElementById("output").innerHTML = "";
+  if (!confirm("Reset everything?")) return;
+  document.getElementById("players").value="";
+  document.getElementById("courts").value=2;
+  document.getElementById("output").innerHTML="";
+  matchesData=[];
 }
+
+function toggleRoundDone(cb) { cb.closest(".round").classList.toggle("completed", cb.checked); }
 
 function generate() {
+  const mode = document.getElementById("mode").value;
   const courts = parseInt(document.getElementById("courts").value);
-  const allPlayers = document.getElementById("players").value
-    .split("\n")
-    .map(p => p.trim())
-    .filter(Boolean);
+  let entries = document.getElementById("players").value.split("\n").map(p=>p.trim()).filter(Boolean);
 
-  const perRound = courts * 4;
-
-  if (allPlayers.length < perRound) {
-    alert("Not enough players for the number of courts");
-    return;
+  if (mode==="doubles") {
+    if (entries.length < 2) { alert("At least 2 teams needed"); return; }
+  } else {
+    if (entries.length < 4) { alert("At least 4 players needed"); return; }
   }
 
-  const rounds = allPlayers.length;
-  const sitOutQueue = [...allPlayers];
-  shuffle(sitOutQueue);
+  matchesData=[];
+  document.getElementById("output").innerHTML="";
+  let rounds = entries.length;
+  let sitQueue = [...entries];
+  shuffle(sitQueue);
 
-  const output = document.getElementById("output");
-  output.innerHTML = "";
+  for(let r=0;r<rounds;r++){
+    let sitOut=[];
+    let active=[];
+    if(mode==="doubles"){
+      const maxTeams = courts*2;
+      sitOut = sitQueue.splice(0, Math.max(0, sitQueue.length - maxTeams));
+      active = entries.filter(t => !sitOut.includes(t));
+      shuffle(active);
+    } else {
+      const maxPlayers = courts*4;
+      sitOut = sitQueue.splice(0, Math.max(0, sitQueue.length - maxPlayers));
+      active = entries.filter(p => !sitOut.includes(p));
+      shuffle(active);
+    }
 
-  for (let r = 0; r < rounds; r++) {
-    const sitOutCount = Math.max(0, allPlayers.length - perRound);
-    const sitOutPlayers = sitOutQueue.splice(0, sitOutCount);
-
-    const activePlayers = allPlayers.filter(p => !sitOutPlayers.includes(p));
-    shuffle(activePlayers);
-
-    const roundDiv = document.createElement("div");
-    roundDiv.className = "round";
-
-    roundDiv.innerHTML = `
-      <div class="round-header">
-        <h3>Round ${r + 1}</h3>
-        <label class="complete-toggle">
-          <input type="checkbox" onchange="toggleCompleted(this)">
-          <span>Done</span>
-        </label>
-      </div>
-    `;
+    const round = document.createElement("div");
+    round.className="round";
+    round.innerHTML = `<div class="round-header"><h3>Round ${r+1}</h3>
+      <label class="complete-toggle"><input type="checkbox" onchange="toggleRoundDone(this)"> Done</label></div>`;
 
     const courtsDiv = document.createElement("div");
-    courtsDiv.className = "courts";
+    courtsDiv.className="courts";
 
-    for (let c = 0; c < courts; c++) {
-      const p = activePlayers.slice(c * 4, c * 4 + 4);
-      courtsDiv.innerHTML += `
-        <div class="court">
-          <div class="court-title">Court ${c + 1}</div>
-          <div class="team">${p[0]} & ${p[2]}</div>
-          <div class="vs">VS</div>
-          <div class="team">${p[1]} & ${p[3]}</div>
-        </div>
-      `;
+    for(let c=0;c<courts;c++){
+      if(mode==="doubles"){
+        const slice = active.slice(c*2, c*2+2);
+        if(slice.length<2) break;
+        const teamA = slice[0].split("&").map(p=>p.trim());
+        const teamB = slice[1].split("&").map(p=>p.trim());
+        const matchIndex = matchesData.length;
+        matchesData.push({teamA, teamB, scoreA:0, scoreB:0});
+        courtsDiv.innerHTML += `
+          <div class="court">
+            <div class="court-title">Court ${c+1}</div>
+            <div class="team">${teamA.join(" & ")}</div>
+            <div class="vs">VS</div>
+            <div class="team">${teamB.join(" & ")}</div>
+            <div class="score-inputs">
+              <input type="number" min="0" onchange="updateScore(${matchIndex},'A',this.value)">
+              <span>:</span>
+              <input type="number" min="0" onchange="updateScore(${matchIndex},'B',this.value)">
+            </div>
+          </div>`;
+      } else {
+        const slice = active.slice(c*4, c*4+4);
+        if(slice.length<4) break;
+        const teamA = [slice[0], slice[2]];
+        const teamB = [slice[1], slice[3]];
+        const matchIndex = matchesData.length;
+        matchesData.push({teamA, teamB, scoreA:0, scoreB:0});
+        courtsDiv.innerHTML += `
+          <div class="court">
+            <div class="court-title">Court ${c+1}</div>
+            <div class="team">${teamA.join(" & ")}</div>
+            <div class="vs">VS</div>
+            <div class="team">${teamB.join(" & ")}</div>
+            <div class="score-inputs">
+              <input type="number" min="0" onchange="updateScore(${matchIndex},'0',this.value)">
+              <span>:</span>
+              <input type="number" min="0" onchange="updateScore(${matchIndex},'0',this.value)">
+            </div>
+          </div>`;
+      }
     }
 
-    roundDiv.appendChild(courtsDiv);
-
-    if (sitOutPlayers.length) {
-      roundDiv.innerHTML += `
-        <div class="sitout">
-          <strong>Sit out:</strong> ${sitOutPlayers.join(", ")}
-        </div>
-      `;
-    }
-
-    output.appendChild(roundDiv);
-    sitOutQueue.push(...sitOutPlayers);
+    round.appendChild(courtsDiv);
+    if(sitOut.length) round.innerHTML += `<div class="sitout"><strong>Sit out:</strong> ${sitOut.join(", ")}</div>`;
+    document.getElementById("output").appendChild(round);
+    sitQueue.push(...sitOut);
   }
+
+ if(mode==="doubles"){
+  const rankingsBtnHTML = `
+    <div style="margin-top:20px;">
+      <button class="generate-btn" onclick="showRankings()">Show Final Rankings</button>
+    </div>`;
+  document.getElementById("output").insertAdjacentHTML("beforeend", rankingsBtnHTML);
+}
+}
+
+function updateScore(index, side, value){
+  matchesData[index][side==='A'?'scoreA':'scoreB']=parseInt(value)||0;
+}
+
+function showRankings(){
+  const stats={};
+  matchesData.forEach(m=>{
+    const keyA=m.teamA.join(" & "), keyB=m.teamB.join(" & ");
+    stats[keyA]??={wins:0,games:0};
+    stats[keyB]??={wins:0,games:0};
+    stats[keyA].games+=m.scoreA; stats[keyB].games+=m.scoreB;
+    if(m.scoreA>m.scoreB) stats[keyA].wins++; else if(m.scoreB>m.scoreA) stats[keyB].wins++;
+  });
+  const ranking=Object.entries(stats).sort((a,b)=>b[1].wins-a[1].wins || b[1].games-a[1].games);
+  let html=`<div class="rankings"><h3>🏆 Final Rankings</h3><table><tr><th>Rank</th><th>Team</th><th>Wins</th><th>Games</th></tr>`;
+  ranking.forEach(([team,s],i)=>{ html+=`<tr><td>${i+1}</td><td>${team}</td><td>${s.wins}</td><td>${s.games}</td></tr>`; });
+  html+=`</table></div>`;
+  document.getElementById("output").insertAdjacentHTML("beforeend",html);
 }
 </script>
-
 </body>
 </html>
