@@ -92,7 +92,6 @@ function resetApp(){
 function toggleRoundDone(cb){ cb.closest(".round").classList.toggle("completed", cb.checked); }
 
 function generate() {
-  // Read fresh values
   const courtsInput = document.getElementById("courts");
   const courts = parseInt(courtsInput.value);
   if (isNaN(courts) || courts <= 0) {
@@ -106,7 +105,6 @@ function generate() {
                   .map(p => p.trim())
                   .filter(Boolean);
 
-  // Validate minimum entries
   if (mode === "doubles" && entries.length < 2) {
     alert("At least 2 teams are needed for Singles or Teams mode");
     return;
@@ -116,7 +114,6 @@ function generate() {
     return;
   }
 
-  // Validate enough entries for selected courts
   if (mode === "doubles" && entries.length < courts * 2) {
     alert(`Not enough teams for ${courts} courts. Maximum teams per round: ${courts * 2}`);
     return;
@@ -156,11 +153,11 @@ function generate() {
     courtsDiv.className="courts";
 
     for(let c=0;c<courts;c++){
-      if(mode==="doubles"){
-        const slice=active.slice(c*2,c*2+2);
-        if(slice.length<2) break;
-        const teamA=slice[0].split("&").map(p=>p.trim());
-        const teamB=slice[1].split("&").map(p=>p.trim());
+      if(mode==="mixed"){ // Americano doubles, no score
+        const slice=active.slice(c*4,c*4+4);
+        if(slice.length<4) break;
+        const teamA=[slice[0],slice[2]];
+        const teamB=[slice[1],slice[3]];
         matchesData.push({teamA,teamB});
         courtsDiv.innerHTML+=`
           <div class="court">
@@ -169,11 +166,11 @@ function generate() {
             <div class="vs">VS</div>
             <div class="team">${teamB.join(" & ")}</div>
           </div>`;
-      } else {
-        const slice=active.slice(c*4,c*4+4);
-        if(slice.length<4) break;
-        const teamA=[slice[0],slice[2]];
-        const teamB=[slice[1],slice[3]];
+      } else { // Singles/Teams, show score inputs
+        const slice=active.slice(c*2,c*2+2);
+        if(slice.length<2) break;
+        const teamA=slice[0].split("&").map(p=>p.trim());
+        const teamB=slice[1].split("&").map(p=>p.trim());
         const matchIndex=matchesData.length;
         matchesData.push({teamA,teamB,scoreA:0,scoreB:0});
         courtsDiv.innerHTML+=`
@@ -203,10 +200,8 @@ function generate() {
   }
 }
 
-// Score update
 function updateScore(index,side,value){ matchesData[index][side==='A'?'scoreA':'scoreB']=parseInt(value)||0; }
 
-// Rankings
 function showRankings(){
   const stats={};
   matchesData.forEach(m=>{
@@ -223,7 +218,6 @@ function showRankings(){
   document.getElementById("output").insertAdjacentHTML("beforeend",html);
 }
 
-// Initialize label
 updateLabel();
 </script>
 </body>
