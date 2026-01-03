@@ -26,7 +26,7 @@
       font-weight: bold;
     }
 
-    textarea, input, button {
+    textarea, input {
       font-size: 16px;
       width: 100%;
       box-sizing: border-box;
@@ -41,19 +41,41 @@
       max-width: 120px;
     }
 
+    /* ✅ BUTTON ROW */
+    .button-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
     button {
       padding: 12px;
-      margin-top: 12px;
       cursor: pointer;
       border: none;
       border-radius: 6px;
-      background: #1976d2;
-      color: white;
+      font-size: 16px;
       font-weight: bold;
+      flex: 1;
+      min-width: 160px;
     }
 
-    button:hover {
+    .generate-btn {
+      background: #1976d2;
+      color: white;
+    }
+
+    .generate-btn:hover {
       background: #125ea7;
+    }
+
+    .reset-btn {
+      background: #e53935;
+      color: white;
+    }
+
+    .reset-btn:hover {
+      background: #c62828;
     }
 
     .round {
@@ -70,7 +92,6 @@
       background: #eef6ee;
     }
 
-    /* ✅ HEADER LAYOUT */
     .round-header {
       display: flex;
       align-items: center;
@@ -86,20 +107,18 @@
       font-size: 18px;
     }
 
-    /* ✅ CHECKBOX FIX */
     .complete-toggle {
       display: flex;
       align-items: center;
-      gap: 4px;          /* SMALL, CONTROLLED SPACE */
+      gap: 4px;
       font-size: 14px;
-      font-weight: normal;
       white-space: nowrap;
       cursor: pointer;
       margin-left: auto;
     }
 
     .complete-toggle input {
-      margin: 0;         /* REMOVE BROWSER DEFAULT */
+      margin: 0;
     }
 
     .courts {
@@ -166,7 +185,10 @@
 <label>Player names (one per line)</label>
 <textarea id="players"></textarea>
 
-<button onclick="confirmGenerate()">Generate Schedule</button>
+<div class="button-row">
+  <button class="generate-btn" onclick="confirmGenerate()">Generate Schedule</button>
+  <button class="reset-btn" onclick="resetApp()">Reset</button>
+</div>
 
 <div id="output"></div>
 
@@ -181,18 +203,25 @@ function shuffle(array) {
 }
 
 function toggleCompleted(checkbox) {
-  const roundDiv = checkbox.closest(".round");
-  roundDiv.classList.toggle("completed", checkbox.checked);
+  checkbox.closest(".round")
+    .classList.toggle("completed", checkbox.checked);
 }
 
 function confirmGenerate() {
   const output = document.getElementById("output");
   if (output.children.length > 0) {
-    if (!confirm("This will generate a new schedule and clear the current one.\n\nContinue?")) {
-      return;
-    }
+    if (!confirm("Generate a new schedule and clear the current one?")) return;
   }
   generate();
+}
+
+function resetApp() {
+  if (!confirm("This will clear everything and reset the app.\n\nContinue?")) return;
+
+  localStorage.clear();
+  document.getElementById("players").value = "";
+  document.getElementById("courts").value = 2;
+  document.getElementById("output").innerHTML = "";
 }
 
 function generate() {
@@ -241,7 +270,6 @@ function generate() {
 
     for (let c = 0; c < courts; c++) {
       const p = activePlayers.slice(c * 4, c * 4 + 4);
-
       courtsDiv.innerHTML += `
         <div class="court">
           <div class="court-title">Court ${c + 1}</div>
