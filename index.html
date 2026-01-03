@@ -66,11 +66,9 @@ let matchesData = [];
 function updateLabel() {
   const mode = document.getElementById("mode").value;
   const label = document.getElementById("playerLabel");
-  if(mode === "doubles") {
-    label.textContent = "Enter player names or teams (one entry per line)";
-  } else {
-    label.textContent = "Enter players (one entry per line)";
-  }
+  label.textContent = mode === "doubles" ?
+    "Enter player names or teams (one entry per line)" :
+    "Enter players (one entry per line)";
 }
 
 function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [arr[i],arr[j]]=[arr[j],arr[i]]; } }
@@ -91,112 +89,140 @@ function resetApp(){
 
 function toggleRoundDone(cb){ cb.closest(".round").classList.toggle("completed", cb.checked); }
 
-function generate() {
-  const courtsInput = document.getElementById("courts");
-  const courts = parseInt(courtsInput.value);
-  if (isNaN(courts) || courts <= 0) {
-    alert("Please enter a valid number of courts");
-    return;
+function generateAllPairs(teams){
+  const pairs = [];
+  for(let i=0;i<teams.length;i++){
+    for(let j=i+1;j<teams.length;j++){
+      pairs.push([teams[i], teams[j]]);
+    }
   }
+  shuffle(pairs);
+  return pairs;
+}
 
-  const mode = document.getElementById("mode").value;
-  let entries = document.getElementById("players").value
-                  .split("\n")
-                  .map(p => p.trim())
-                  .filter(Boolean);
+// Scheduler for Singles/Teams
+function generateSinglesTeamsRounds(teams, courts){
+  const allPairs = generateAllPairs(teams);
+  const rounds = [];
+  let remainingPairs = [...allPairs];
 
-  if (mode === "doubles" && entries.length < 2) {
-    alert("At least 2 teams are needed for Singles or Teams mode");
-    return;
-  }
-  if (mode === "mixed" && entries.length < 4) {
-    alert("At least 4 players are needed for Doubles (Americano Single Entry)");
-    return;
-  }
+  while(remainingPairs.length){
+    const roundPairs = [];
+    const teamsInRound = new Set();
 
-  if (mode === "doubles" && entries.length < courts * 2) {
-    alert(`Not enough teams for ${courts} courts. Maximum teams per round: ${courts * 2}`);
-    return;
-  }
-  if (mode === "mixed" && entries.length < courts * 4) {
-    alert(`Not enough players for ${courts} courts. Maximum players per round: ${courts * 4}`);
-    return;
-  }
-
-  matchesData = [];
-  document.getElementById("output").innerHTML = "";
-  let rounds = entries.length;
-  let sitQueue = [...entries];
-  shuffle(sitQueue);
-
-  for(let r=0;r<rounds;r++){
-    let sitOut=[];
-    let active=[];
-    if(mode==="doubles"){
-      const maxTeams=courts*2;
-      sitOut=sitQueue.splice(0, Math.max(0, sitQueue.length-maxTeams));
-      active=entries.filter(t=>!sitOut.includes(t));
-      shuffle(active);
-    } else {
-      const maxPlayers=courts*4;
-      sitOut=sitQueue.splice(0, Math.max(0, sitQueue.length-maxPlayers));
-      active=entries.filter(p=>!sitOut.includes(p));
-      shuffle(active);
+    for(let i=0;i<remainingPairs.length;i++){
+      const [a,b] = remainingPairs[i];
+      if(!teamsInRound.has(a) && !teamsInRound.has(b)){
+        roundPairs.push([a,b]);
+        teamsInRound.add(a); teamsInRound.add(b);
+      }
+      if(roundPairs.length >= courts) break;
     }
 
-    const round=document.createElement("div");
-    round.className="round";
-    round.innerHTML=`<div class="round-header"><h3>Round ${r+1}</h3>
-      <label class="complete-toggle"><input type="checkbox" onchange="toggleRoundDone(this)"> Done</label></div>`;
+    // Remove assigned matches
+    remainingPairs = remainingPairs.filter(p => !roundPairs.some(rp => (rp[0]===p[0]&&rp[1]===p[1]) || (rp[0]===p[1]&&rp[1]===p[0])));
 
-    const courtsDiv=document.createElement("div");
-    courtsDiv.className="courts";
+    // Sit-outs
+    const sitOut = teams.filter(t=>!teamsInRound.has(t));
 
+    rounds.push({pairs: roundPairs, sitOut});
+  }
+
+  return rounds;
+}
+
+// Americano random doubles
+function generateAmericanoRounds(players, courts){
+  const rounds = [];
+  const maxPlayers = courts*4;
+  let sitQueue = [...players];
+  shuffle(sitQueue);
+
+  for(let r=0;r<players.length;r++){
+    let sitOut = sitQueue.splice(0, Math.max(0, sitQueue.length-maxPlayers));
+    let active = players.filter(p=>!sitOut.includes(p));
+    shuffle(active);
+    const pairs = [];
     for(let c=0;c<courts;c++){
-      if(mode==="mixed"){ // Americano doubles, no score
-        const slice=active.slice(c*4,c*4+4);
-        if(slice.length<4) break;
-        const teamA=[slice[0],slice[2]];
-        const teamB=[slice[1],slice[3]];
-        matchesData.push({teamA,teamB});
+      const slice = active.slice(c*4,c*4+4);
+      if(slice.length<4) break;
+      pairs.push({teamA:[slice[0],slice[2]], teamB:[slice[1],slice[3]]});
+    }
+    rounds.push({pairs, sitOut});
+    sitQueue.push(...sitOut);
+  }
+  return rounds;
+}
+
+function generate(){
+  const courts = parseInt(document.getElementById("courts").value);
+  const mode = document.getElementById("mode").value;
+  const entries = document.getElementById("players").value.split("\n").map(p=>p.trim()).filter(Boolean);
+
+  if(mode==="doubles" && entries.length<2){ alert("At least 2 teams needed"); return; }
+  if(mode==="mixed" && entries.length<4){ alert("At least 4 players needed"); return; }
+
+  matchesData=[];
+  document.getElementById("output").innerHTML="";
+
+  if(mode==="doubles"){
+    const rounds = generateSinglesTeamsRounds(entries, courts);
+    rounds.forEach((r,idx)=>{
+      const round=document.createElement("div");
+      round.className="round";
+      round.innerHTML=`<div class="round-header"><h3>Round ${idx+1}</h3>
+        <label class="complete-toggle"><input type="checkbox" onchange="toggleRoundDone(this)"> Done</label></div>`;
+      const courtsDiv=document.createElement("div");
+      courtsDiv.className="courts";
+
+      r.pairs.forEach((p,cIdx)=>{
+        const matchIndex = matchesData.length;
+        matchesData.push({teamA:p[0].split("&").map(x=>x.trim()), teamB:p[1].split("&").map(x=>x.trim()), scoreA:0, scoreB:0});
         courtsDiv.innerHTML+=`
           <div class="court">
-            <div class="court-title">Court ${c+1}</div>
-            <div class="team">${teamA.join(" & ")}</div>
+            <div class="court-title">Court ${cIdx+1}</div>
+            <div class="team">${p[0]}</div>
             <div class="vs">VS</div>
-            <div class="team">${teamB.join(" & ")}</div>
-          </div>`;
-      } else { // Singles/Teams, show score inputs
-        const slice=active.slice(c*2,c*2+2);
-        if(slice.length<2) break;
-        const teamA=slice[0].split("&").map(p=>p.trim());
-        const teamB=slice[1].split("&").map(p=>p.trim());
-        const matchIndex=matchesData.length;
-        matchesData.push({teamA,teamB,scoreA:0,scoreB:0});
-        courtsDiv.innerHTML+=`
-          <div class="court">
-            <div class="court-title">Court ${c+1}</div>
-            <div class="team">${teamA.join(" & ")}</div>
-            <div class="vs">VS</div>
-            <div class="team">${teamB.join(" & ")}</div>
+            <div class="team">${p[1]}</div>
             <div class="score-inputs">
               <input type="number" min="0" value="0" onchange="updateScore(${matchIndex},'A',this.value)">
               <span>:</span>
               <input type="number" min="0" value="0" onchange="updateScore(${matchIndex},'B',this.value)">
             </div>
           </div>`;
-      }
-    }
+      });
 
-    round.appendChild(courtsDiv);
-    if(sitOut.length) round.innerHTML+=`<div class="sitout"><strong>Sit out:</strong> ${sitOut.join(", ")}</div>`;
-    document.getElementById("output").appendChild(round);
-    sitQueue.push(...sitOut);
-  }
+      if(r.sitOut.length) round.innerHTML+=`<div class="sitout"><strong>Sit out:</strong> ${r.sitOut.join(", ")}</div>`;
+      round.appendChild(courtsDiv);
+      document.getElementById("output").appendChild(round);
+    });
 
-  if(mode==="doubles"){
-    const rankingsBtnHTML=`<div style="margin-top:20px;"><button class="generate-btn" onclick="showRankings()">Show Final Rankings</button></div>`;
-    document.getElementById("output").insertAdjacentHTML("beforeend",rankingsBtnHTML);
+    document.getElementById("output").insertAdjacentHTML("beforeend",
+      `<div style="margin-top:20px;"><button class="generate-btn" onclick="showRankings()">Show Final Rankings</button></div>`);
+
+  } else {
+    const rounds = generateAmericanoRounds(entries, courts);
+    rounds.forEach((r,idx)=>{
+      const round=document.createElement("div");
+      round.className="round";
+      round.innerHTML=`<div class="round-header"><h3>Round ${idx+1}</h3>
+        <label class="complete-toggle"><input type="checkbox" onchange="toggleRoundDone(this)"> Done</label></div>`;
+      const courtsDiv=document.createElement("div");
+      courtsDiv.className="courts";
+      r.pairs.forEach((p,cIdx)=>{
+        matchesData.push({teamA:p.teamA, teamB:p.teamB});
+        courtsDiv.innerHTML+=`
+          <div class="court">
+            <div class="court-title">Court ${cIdx+1}</div>
+            <div class="team">${p.teamA.join(" & ")}</div>
+            <div class="vs">VS</div>
+            <div class="team">${p.teamB.join(" & ")}</div>
+          </div>`;
+      });
+      if(r.sitOut.length) round.innerHTML+=`<div class="sitout"><strong>Sit out:</strong> ${r.sitOut.join(", ")}</div>`;
+      round.appendChild(courtsDiv);
+      document.getElementById("output").appendChild(round);
+    });
   }
 }
 
@@ -208,7 +234,7 @@ function showRankings(){
     const keyA=m.teamA.join(" & "), keyB=m.teamB.join(" & ");
     stats[keyA]??={wins:0,games:0};
     stats[keyB]??={wins:0,games:0};
-    stats[keyA].games+=m.scoreA; stats[keyB].games+=m.scoreB;
+    stats[keyA].games+=m.scoreA||0; stats[keyB].games+=m.scoreB||0;
     if(m.scoreA>m.scoreB) stats[keyA].wins++; else if(m.scoreB>m.scoreA) stats[keyB].wins++;
   });
   const ranking=Object.entries(stats).sort((a,b)=>b[1].wins-a[1].wins || b[1].games-a[1].games);
