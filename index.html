@@ -32,6 +32,11 @@ button { padding:12px; border:none; border-radius:6px; font-size:16px; font-weig
 input.score-input { width:40px; padding:2px 5px; text-align:center; margin:0 4px; font-weight:bold; }
 table, th, td { border: 1px solid #ddd; border-collapse: collapse; padding:4px 8px; text-align:center; }
 th { background:#f1f1f1; }
+.tabs { display:flex; gap:10px; margin-top:15px; border-bottom:1px solid #ddd; }
+.tab { padding:8px 16px; cursor:pointer; border-radius:6px 6px 0 0; background:#eee; font-weight:bold; }
+.tab.active { background:#1976d2; color:#fff; }
+.tab-content { display:none; margin-top:12px; }
+.tab-content.active { display:block; }
 </style>
 </head>
 <body>
@@ -56,15 +61,39 @@ th { background:#f1f1f1; }
 </div>
 
 <div id="warning"></div>
-<div id="output"></div>
-<div id="scoreboard" style="margin-top:20px;"></div>
+
+<!-- Tabs for Teams only -->
+<div id="teamsTabs" style="display:none;">
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('rounds')">Rounds</div>
+    <div class="tab" onclick="switchTab('score')">Scoreboard</div>
+  </div>
+  <div id="rounds" class="tab-content active"></div>
+  <div id="score" class="tab-content"></div>
+</div>
+
+<!-- Output for Americano -->
+<div id="americanoOutput"></div>
+
 </div>
 
 <script>
 const qs = id => document.getElementById(id);
-function clearAll(){qs("output").innerHTML=""; qs("warning").innerHTML=""; qs("scoreboard").innerHTML="";}
-function resetAll(){if(!confirm("Reset everything?"))return; qs("entries").value=""; qs("courts").value=2; clearAll();}
-function toggleDone(cb){cb.closest(".round").classList.toggle("completed", cb.checked);}
+function clearAll(){
+    qs("rounds").innerHTML = "";
+    qs("score").innerHTML = "";
+    qs("americanoOutput").innerHTML = "";
+    qs("warning").innerHTML="";
+    qs("teamsTabs").style.display="none";
+}
+
+// Tabs switching
+function switchTab(tabId){
+    document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
+    if(tabId==="rounds"){document.querySelectorAll(".tab")[0].classList.add("active"); qs("rounds").classList.add("active");}
+    else {document.querySelectorAll(".tab")[1].classList.add("active"); qs("score").classList.add("active");}
+}
 
 /* ===== TEAMS MODE ===== */
 function generateTeamsRounds(players, courts){
@@ -76,46 +105,55 @@ function generateTeamsRounds(players, courts){
     }
 
     const rounds = [];
-    const lastPlayed = {}; 
-    players.forEach(p => lastPlayed[p] = -1); 
+    const lastPlayedRound = {};
+    players.forEach(p => lastPlayedRound[p] = -1);
     let roundNum = 0;
 
     while(allMatches.length){
         roundNum++;
         const roundMatches = [];
-        const roundPlayers = new Set();
+        const usedPlayers = new Set();
 
         allMatches.sort((a,b)=>{
-            const aMax = Math.max(lastPlayed[a[0]], lastPlayed[a[1]]);
-            const bMax = Math.max(lastPlayed[b[0]], lastPlayed[b[1]]);
+            const aMax = Math.max(lastPlayedRound[a[0]], lastPlayedRound[a[1]]);
+            const bMax = Math.max(lastPlayedRound[b[0]], lastPlayedRound[b[1]]);
             return aMax - bMax;
         });
 
-        for(let i=0;i<allMatches.length && roundMatches.length< courts;i++){
+        for(let i=0; i<allMatches.length && roundMatches.length < courts; i++){
             const [a,b] = allMatches[i];
-            if(!roundPlayers.has(a) && !roundPlayers.has(b)){
+            if(!usedPlayers.has(a) && !usedPlayers.has(b)){
                 roundMatches.push(allMatches[i]);
-                roundPlayers.add(a); roundPlayers.add(b);
+                usedPlayers.add(a);
+                usedPlayers.add(b);
             }
         }
 
         roundMatches.forEach(m=>{
             const idx = allMatches.findIndex(x=>x[0]===m[0] && x[1]===m[1]);
             if(idx>=0) allMatches.splice(idx,1);
-            lastPlayed[m[0]] = roundNum;
-            lastPlayed[m[1]] = roundNum;
+            lastPlayedRound[m[0]] = roundNum;
+            lastPlayedRound[m[1]] = roundNum;
         });
 
-        const sitOut = players.filter(p => !roundPlayers.has(p));
-        while(roundMatches.length< courts) roundMatches.push(null);
+        // Fill all courts if possible
+        while(roundMatches.length < courts){
+            const sitPlayers = players.filter(p=>!usedPlayers.has(p));
+            if(sitPlayers.length>=2){
+                const match = sitPlayers.slice(0,2);
+                roundMatches.push(match);
+                usedPlayers.add(match[0]); usedPlayers.add(match[1]);
+            } else break;
+        }
 
-        rounds.push({ matches: roundMatches, sitOut });
+        const sitOut = players.filter(p => !usedPlayers.has(p));
+        rounds.push({matches: roundMatches, sitOut});
     }
 
     return rounds;
 }
 
-/* ===== AMERICANO MODE: Fair Sit-outs, Repeated Rounds ===== */
+/* ===== AMERICANO MODE ===== */
 function generateAmericano(players, courts, totalRoundsNeeded=18){
     const rounds = [];
     const slots = courts*4;
@@ -125,29 +163,33 @@ function generateAmericano(players, courts, totalRoundsNeeded=18){
         qs("warning").innerHTML=`<div class="warning">Not enough players for even one court (need 4).</div>`;
         return [];
     }
-    if(totalPlayers < slots){
-        qs("warning").innerHTML=`<div class="warning">⚠️ Not enough players to fill all courts (${totalPlayers} players for ${courts} courts, need ${slots}).</div>`;
-        return [];
-    }
 
     let sitOutTracker = new Set();
     let queue = [...players];
     let roundCounter = 0;
 
     while(roundCounter < totalRoundsNeeded){
-        const availableToSit = queue.filter(p => !sitOutTracker.has(p));
         const sitCount = totalPlayers - slots;
         let sitOut = [];
-        if(sitCount > 0){
+        const availableToSit = queue.filter(p => !sitOutTracker.has(p));
+        if(availableToSit.length >= sitCount){
             sitOut = availableToSit.slice(0, sitCount);
+        } else {
+            sitOut = [...availableToSit];
+            const remaining = sitCount - sitOut.length;
+            const alreadySatOut = queue.filter(p => sitOutTracker.has(p) && !sitOut.includes(p));
+            sitOut.push(...alreadySatOut.slice(0, remaining));
         }
 
         const activePlayers = queue.filter(p => !sitOut.includes(p));
-
         const matches = [];
         for(let c=0;c<courts;c++){
             const group = activePlayers.slice(c*4,c*4+4);
-            if(group.length===4) matches.push({A:[group[0],group[1]], B:[group[2],group[3]]});
+            if(group.length>=2){
+                const A = group.slice(0, Math.ceil(group.length/2));
+                const B = group.slice(Math.ceil(group.length/2));
+                matches.push({A,B});
+            }
         }
 
         rounds.push({matches, sitOut});
@@ -171,31 +213,25 @@ function generate(){
 
     if(mode==="teams"){
         if(entries.length<2){qs("warning").innerHTML=`<div class="warning">At least 2 teams required.</div>`; return;}
-        const requiredTeams = courts*2;
-        if(entries.length < requiredTeams){
-            qs("warning").innerHTML=`<div class="warning">⚠️ Not enough teams to fill all courts (${entries.length} teams for ${courts} courts, need ${requiredTeams}). Some teams will sit out each round.</div>`;
-        }
+        qs("teamsTabs").style.display = "block";
         const rounds = generateTeamsRounds(entries,courts);
         let roundCounter = 1;
         rounds.forEach(r=>{
-            renderRound(roundCounter++, r.matches.map(m=>m? [m]:[]), "teams", r.sitOut, true);
+            renderRound(roundCounter++, r.matches.map(m=>m? [m]:[]), "teams", r.sitOut, true, "rounds");
         });
+        updateScoreboard();
     }
 
     if(mode==="americano"){
         const requiredPlayers = courts*4;
         if(entries.length<4){qs("warning").innerHTML=`<div class="warning">At least 4 players required for Americano.</div>`; return;}
-        if(entries.length < requiredPlayers){
-            qs("warning").innerHTML=`<div class="warning">⚠️ Not enough players to fill all courts (${entries.length} players for ${courts} courts, need ${requiredPlayers}).</div>`;
-            return;
-        }
-        const rounds = generateAmericano(entries,courts, 18); // 3 hours × 10-min rounds
-        rounds.forEach((r,i)=>renderRound(i+1,r.matches,"americano",r.sitOut,false));
+        const rounds = generateAmericano(entries,courts,18);
+        rounds.forEach((r,i)=>renderRound(i+1,r.matches,"americano",r.sitOut,false,"americanoOutput"));
     }
 }
 
 /* ===== RENDER ROUND ===== */
-function renderRound(num,matches,mode,sitOut=[],showScore){
+function renderRound(num,matches,mode,sitOut=[],showScore,containerId){
     const round = document.createElement("div"); 
     round.className="round";
     round.innerHTML=`<div class="round-header"><h3>Round ${num}</h3>
@@ -203,10 +239,8 @@ function renderRound(num,matches,mode,sitOut=[],showScore){
     const courtsDiv = document.createElement("div"); courtsDiv.className="courts";
 
     matches.forEach((m,i)=>{
-        const courtDiv = document.createElement("div");
-        courtDiv.className="court";
+        const courtDiv = document.createElement("div"); courtDiv.className="court";
         courtDiv.innerHTML=`<div class="court-title">Court ${i+1}</div>`;
-
         if(mode==="teams"){
             if(m.length){
                 courtDiv.innerHTML+=`<div class="vs">${m[0][0]} vs ${m[0][1]}</div>
@@ -215,20 +249,12 @@ function renderRound(num,matches,mode,sitOut=[],showScore){
                   :
                   <input type="number" class="score-input" placeholder="0" data-team="${m[0][1]}" oninput="updateScoreboard()">
                 </div>`;
-            } else {
-                courtDiv.innerHTML+=`<div class="vs">No Match</div>`;
-            }
+            } else courtDiv.innerHTML+=`<div class="vs">No Match</div>`;
         } else if(mode==="americano"){
             if(m && m.A && m.B){
-                courtDiv.innerHTML+=
-                    `<div class="vs">
-                        ${m.A.join(" & ")}<br>vs<br>${m.B.join(" & ")}
-                    </div>`;
-            } else {
-                courtDiv.innerHTML+=`<div class="vs">No Match</div>`;
-            }
+                courtDiv.innerHTML+=`<div class="vs">${m.A.join(" & ")}<br>vs<br>${m.B.join(" & ")}</div>`;
+            } else courtDiv.innerHTML+=`<div class="vs">No Match</div>`;
         }
-
         courtsDiv.appendChild(courtDiv);
     });
 
@@ -241,56 +267,37 @@ function renderRound(num,matches,mode,sitOut=[],showScore){
         round.appendChild(sitDiv);
     }
 
-    qs("output").appendChild(round);
-
-    if(mode==="teams") updateScoreboard();
+    qs(containerId).appendChild(round);
 }
 
 /* ===== SCOREBOARD ===== */
 function updateScoreboard(){
     const entries = qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
     if(entries.length < 2) return;
-
     const stats = {};
     entries.forEach(t=> stats[t]={won:0, lost:0, points:0});
-
     const scoreInputs = document.querySelectorAll(".score-input");
     for(let i=0;i<scoreInputs.length;i+=2){
         const teamA = scoreInputs[i].dataset.team;
         const teamB = scoreInputs[i+1].dataset.team;
         const scoreA = parseInt(scoreInputs[i].value) || 0;
         const scoreB = parseInt(scoreInputs[i+1].value) || 0;
-
-        if(scoreA > scoreB){
-            stats[teamA].won++;
-            stats[teamB].lost++;
-        } else if(scoreB > scoreA){
-            stats[teamB].won++;
-            stats[teamA].lost++;
-        }
-
+        if(scoreA>scoreB){ stats[teamA].won++; stats[teamB].lost++; }
+        else if(scoreB>scoreA){ stats[teamB].won++; stats[teamA].lost++; }
         stats[teamA].points += scoreA;
         stats[teamB].points += scoreB;
     }
-
     const ranking = Object.entries(stats).sort((a,b)=>{
         if(b[1].won !== a[1].won) return b[1].won - a[1].won;
         return b[1].points - a[1].points;
     });
-
-    let html = `<h3>Scoreboard</h3><table style="width:100%;border-collapse:collapse;">
+    let html = `<table style="width:100%;border-collapse:collapse;">
         <tr><th style="text-align:left">Team/Player</th><th>Won</th><th>Lost</th><th>Points</th></tr>`;
     ranking.forEach(([team,data])=>{
-        html+=`<tr>
-            <td>${team}</td>
-            <td>${data.won}</td>
-            <td>${data.lost}</td>
-            <td>${data.points}</td>
-        </tr>`;
+        html+=`<tr><td>${team}</td><td>${data.won}</td><td>${data.lost}</td><td>${data.points}</td></tr>`;
     });
     html += "</table>";
-
-    qs("scoreboard").innerHTML = html;
+    qs("score").innerHTML = html;
 }
 </script>
 </body>
