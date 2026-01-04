@@ -5,203 +5,177 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PickleBall</title>
 <style>
-body { font-family: Arial, sans-serif; background:#f4f6f8; margin:0; padding:15px; }
+body { font-family: Arial,sans-serif; background:#f4f6f8; padding:15px; }
 .container { max-width:1000px; margin:auto; }
 h2 { margin-top:0; }
-label { font-weight:bold; margin-top:12px; display:block; }
-textarea, input, select { width:100%; font-size:16px; box-sizing:border-box; margin-top:6px; }
+label { font-weight:bold; display:block; margin-top:12px; }
+textarea,input,select { width:100%; margin-top:6px; padding:8px; font-size:16px; }
 textarea { height:150px; }
 input[type=number] { max-width:120px; }
 .button-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-button { padding:12px; border:none; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; flex:1; min-width:160px; }
-.generate-btn { background:#1976d2; color:white; }
-.reset-btn { background:#e53935; color:white; }
-.round { background:white; border-radius:10px; padding:15px; margin-top:18px; box-shadow:0 4px 10px rgba(0,0,0,.08); }
+button { padding:12px; border:none; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; }
+.generate { background:#1976d2; color:#fff; }
+.reset { background:#d32f2f; color:#fff; }
+.round { background:#fff; border-radius:10px; padding:15px; margin-top:18px; box-shadow:0 4px 10px rgba(0,0,0,.08); }
 .round.completed { opacity:.6; }
-.round-header { display:flex; align-items:center; border-bottom:1px solid #eee; padding-bottom:6px; }
+.round-header { display:flex; align-items:center; border-bottom:1px solid #eee; }
 .round-header h3 { margin:0; }
-.complete-toggle { margin-left:auto; display:flex; align-items:center; gap:6px; white-space:nowrap; }
+.done { margin-left:auto; display:flex; align-items:center; gap:6px; }
 .courts { display:grid; grid-template-columns:1fr; gap:10px; margin-top:10px; }
 @media(min-width:700px){ .courts { grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); } }
 .court { background:#f9fafb; border:1px solid #e3e6ea; border-radius:8px; padding:10px; text-align:center; }
 .court-title { font-weight:bold; margin-bottom:6px; }
-.team { background:#eaf2ff; padding:6px; border-radius:6px; margin:4px 0; }
+.team { padding:6px; border-radius:6px; margin:4px 0; }
 .vs { font-weight:bold; margin:4px 0; }
-.score-inputs { display:flex; justify-content:center; gap:6px; margin-top:6px; }
-.score-inputs input { width:50px; text-align:center; font-weight:bold; }
-.sitout { margin-top:10px; font-style:italic; color:#666; }
-.usage { margin-top:10px; }
-.usage-label { font-size:14px; margin-bottom:4px; }
-.usage-bar { height:10px; background:#e0e0e0; border-radius:5px; overflow:hidden; }
-.usage-fill { height:100%; background:#4caf50; }
-.warning { background:#fff3cd; color:#856404; border:1px solid #ffeeba; border-radius:6px; padding:10px; margin-top:12px; }
+.score { margin-bottom:6px; font-weight:bold; }
+.sitout { margin-top:10px; font-style:italic; color:#555; }
+.warning { background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; padding:10px; margin-top:12px; color:#856404; }
+input.score-input { width:40px; padding:2px 5px; text-align:center; margin:0 4px; font-weight:bold; }
 </style>
 </head>
 <body>
 <div class="container">
 <h2>PickleBall</h2>
+
 <label>Match Type</label>
-<select id="mode" onchange="onModeChange()">
+<select id="mode" onchange="clearAll()">
   <option value="teams">Singles or Teams</option>
   <option value="americano">Doubles (Americano Single Entry)</option>
 </select>
-<label id="playerLabel">Player names / Teams (one entry per line)</label>
-<textarea id="players"></textarea>
+
+<label>Player names / Teams (one entry per line)</label>
+<textarea id="entries"></textarea>
+
 <label>Number of courts</label>
-<input type="number" id="courts" min="1" value="2" onchange="autoRegen()">
+<input type="number" id="courts" min="1" value="2">
+
 <div class="button-row">
-  <button class="generate-btn" onclick="confirmGenerate()">Generate</button>
-  <button class="reset-btn" onclick="resetApp()">Reset</button>
+  <button class="generate" onclick="generate()">Generate</button>
+  <button class="reset" onclick="resetAll()">Reset</button>
 </div>
+
 <div id="warning"></div>
 <div id="output"></div>
 </div>
 
 <script>
-let matchStats = [];
+const qs=id=>document.getElementById(id);
+function clearAll(){qs("output").innerHTML=""; qs("warning").innerHTML="";}
+function resetAll(){if(!confirm("Reset everything?"))return; qs("entries").value=""; qs("courts").value=2; clearAll();}
+function toggleDone(cb){cb.closest(".round").classList.toggle("completed", cb.checked);}
 
-// Utilities
-function clearOutput(){
-  document.getElementById("output").innerHTML="";
-  document.getElementById("warning").innerHTML="";
-  matchStats=[];
-}
-
-function onModeChange(){ clearOutput(); }
-function autoRegen(){ if(document.getElementById("output").children.length) generate(); }
-function confirmGenerate(){ if(document.getElementById("output").children.length && !confirm("Generate a new schedule?")) return; generate(); }
-function resetApp(){ if(!confirm("Reset everything?")) return; document.getElementById("players").value=""; document.getElementById("courts").value=2; clearOutput(); }
-function toggleDone(cb){ cb.closest(".round").classList.toggle("completed", cb.checked); }
-function updateScore(idx, field, val){ matchStats[idx][field] = parseInt(val) || 0; }
-
-// Round Robin for Teams
+/* TOURNAMENT ROUND ROBIN GENERATOR */
 function roundRobin(teams){
-  let list=[...teams]; if(list.length%2) list.push("BYE"); const rounds=[]; const n=list.length;
-  for(let r=0;r<n-1;r++){ const pairs=[]; for(let i=0;i<n/2;i++){ const a=list[i], b=list[n-1-i]; if(a!=="BYE" && b!=="BYE") pairs.push([a,b]); } rounds.push(pairs); list.splice(1,0,list.pop()); } return rounds;
-}
-function batchRounds(rrRounds, courts){
-  const result=[]; rrRounds.forEach(rr=>{ for(let i=0;i<rr.length;i+=courts){ result.push({matches:rr.slice(i,i+courts), sitOut:[]}); } }); return result;
-}
-
-/* ----------------- True Americano Round-Robin ----------------- */
-function americano(players, courts){
-  const totalPlayers = players.length;
-  const activePerRound = Math.min(courts*4, totalPlayers);
-  const rounds=[];
-  
-  // Initialize partner/opponent counts
-  const partnerCount={}, opponentCount={};
-  players.forEach(p=>{
-    partnerCount[p]={}; opponentCount[p]={};
-    players.forEach(q=>{ if(p!==q){ partnerCount[p][q]=0; opponentCount[p][q]=0; } });
-  });
-
-  // Sit-out queue
-  let sitOutQueue=[...players];
-  
-  // Heuristic: enough rounds to let everyone partner/opponent
-  const maxRounds = Math.ceil((totalPlayers*(totalPlayers-1)/2)/(activePerRound/2))*2;
-
-  for(let r=0;r<maxRounds;r++){
-    const numSitOut = totalPlayers - activePerRound;
-    const sitOut = sitOutQueue.slice(0,numSitOut);
-    sitOutQueue = sitOutQueue.slice(numSitOut);
-    if(sitOutQueue.length===0) sitOutQueue = players.filter(p=>!sitOut.includes(p));
-
-    const active = players.filter(p=>!sitOut.includes(p));
-
-    // Create matches trying to avoid repeat partners
+  let list=[...teams];
+  if(list.length%2) list.push("BYE");
+  const n=list.length, rounds=[];
+  for(let r=0;r<n-1;r++){
     const matches=[];
-    const activeCopy = [...active];
-    for(let i=0;i<courts;i++){
-      const group = activeCopy.splice(0,4);
-      if(group.length===4){
-        // Simple pairing: pick pair minimizing partner count
-        let A=[group[0],group[1]], B=[group[2],group[3]];
-        matches.push({A,B});
-        // update partner/opponent counts
-        A.forEach(x=>A.forEach(y=>{ if(x!==y) partnerCount[x][y]++; }));
-        B.forEach(x=>B.forEach(y=>{ if(x!==y) partnerCount[x][y]++; }));
-        A.forEach(x=>B.forEach(y=>{ opponentCount[x][y]++; opponentCount[y][x]++; }));
-      }
+    for(let i=0;i<n/2;i++){
+      const a=list[i], b=list[n-1-i];
+      if(a!=="BYE"&&b!=="BYE") matches.push([a,b]);
     }
-
-    rounds.push({matches, sitOut});
+    rounds.push(matches);
+    list.splice(1,0,list.pop());
   }
-
   return rounds;
 }
 
-/* ----------------- Generate function ----------------- */
-function generate(){
-  const mode=document.getElementById("mode").value;
-  const courts=parseInt(document.getElementById("courts").value);
-  const entries=document.getElementById("players").value.split("\n").map(x=>x.trim()).filter(Boolean);
+/* SPLIT ROUND INTO SUBROUNDS BY COURTS AND CALCULATE SIT OUTS */
+function splitRoundsByCourts(matches, teams, courts){
+  const subRounds=[];
+  let remainingTeams=[...teams];
+  for(let i=0;i<matches.length;i+=courts){
+    const slice=matches.slice(i,i+courts);
+    const playingTeams=slice.flat();
+    const sitOut=remainingTeams.filter(t=>!playingTeams.includes(t));
+    subRounds.push({matches:slice,sitOut});
+  }
+  return subRounds;
+}
 
-  clearOutput();
-
-  if(mode==="teams" && entries.length<2){ alert("At least 2 teams required"); return; }
-  if(mode==="americano"){
-    if(entries.length<4){ alert("At least 4 players required"); return; }
-    if(entries.length<courts*4){
-      document.getElementById("warning").innerHTML = `<div class="warning">⚠️ Not enough players to fill all courts. ${entries.length} players for ${courts} courts.</div>`;
+/* AMERICANO GENERATOR */
+function generateAmericano(players,courts){
+  const rounds=[], slots=courts*4, queue=[...players], maxRounds=players.length*2;
+  for(let r=0;r<maxRounds;r++){
+    if(players.length<slots) break;
+    const sitCount=players.length-slots;
+    const sitOut=queue.splice(0,sitCount);
+    queue.push(...sitOut);
+    const active=players.filter(p=>!sitOut.includes(p));
+    const matches=[];
+    for(let c=0;c<courts;c++){
+      const g=active.slice(c*4,c*4+4);
+      if(g.length===4) matches.push({A:[g[0],g[1]],B:[g[2],g[3]]});
     }
+    rounds.push({matches,sitOut});
+  }
+  return rounds;
+}
+
+/* GENERATE */
+function generate(){
+  clearAll();
+  const mode=qs("mode").value;
+  const entries=qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
+  let courts=parseInt(qs("courts").value);
+
+  if(mode==="teams"){
+    if(entries.length<2){qs("warning").innerHTML=`<div class="warning">At least 2 teams required.</div>`; return;}
+    const rr=roundRobin(entries);
+    rr.forEach((round,i)=>{
+      const maxMatches=round.length;
+      if(courts>maxMatches){
+        qs("warning").innerHTML=`<div class="warning">⚠️ Too many courts selected.<br>With ${entries.length} teams, only ${maxMatches} courts per round possible.</div>`;
+        courts=maxMatches;
+      }
+      const subRounds=splitRoundsByCourts(round, entries, courts);
+      subRounds.forEach(sr=>renderRound(i+1,sr.matches,"teams",sr.sitOut,true));
+    });
   }
 
-  let rounds = mode==="teams" ? batchRounds(roundRobin(entries), courts) : americano(entries, courts);
+  if(mode==="americano"){
+    const required=courts*4;
+    if(entries.length<required){qs("warning").innerHTML=`<div class="warning">⚠️ Not enough players.<br>${entries.length} players for ${courts} courts (need ${required}).</div>`; return;}
+    const rounds=generateAmericano(entries,courts);
+    rounds.forEach((r,i)=>renderRound(i+1,r.matches,"americano",r.sitOut,false));
+  }
+}
 
-  rounds.forEach((r,ri)=>{
-    const round=document.createElement("div"); round.className="round";
-    const usedCourts = r.matches.length;
-    const usagePct = Math.round((usedCourts / courts) * 100);
-
-    round.innerHTML=`
-      <div class="round-header">
-        <h3>Round ${ri+1}</h3>
-        <label class="complete-toggle"><input type="checkbox" onchange="toggleDone(this)"> Done</label>
-      </div>
-      <div class="usage">
-        <div class="usage-label">Court usage: ${usedCourts} / ${courts}</div>
-        <div class="usage-bar"><div class="usage-fill" style="width:${usagePct}%"></div></div>
-      </div>
-    `;
-
-    const courtsDiv=document.createElement("div"); courtsDiv.className="courts";
-
-    r.matches.forEach((p,ci)=>{
-      if(mode==="teams"){
-        const idx=matchStats.length;
-        matchStats.push({teamA:p[0], teamB:p[1], scoreA:0, scoreB:0});
-        courtsDiv.innerHTML+=`
-        <div class="court">
-          <div class="court-title">Court ${ci+1}</div>
-          <div class="team">${p[0]}</div>
-          <div class="vs">VS</div>
-          <div class="team">${p[1]}</div>
-          <div class="score-inputs">
-            <input type="number" value="0" onchange="updateScore(${idx},'scoreA',this.value)">
-            <span>:</span>
-            <input type="number" value="0" onchange="updateScore(${idx},'scoreB',this.value)">
-          </div>
-        </div>`;
-      } else {
-        courtsDiv.innerHTML+=`
-        <div class="court">
-          <div class="court-title">Court ${ci+1}</div>
-          <div class="team">${p.A.join(" & ")}</div>
-          <div class="vs">VS</div>
-          <div class="team">${p.B.join(" & ")}</div>
-        </div>`;
-      }
-    });
-
-    if(r.sitOut.length){
-      round.innerHTML+=`<div class="sitout"><strong>Sit out:</strong> ${r.sitOut.join(", ")}</div>`;
+/* RENDER ROUND */
+function renderRound(num,matches,mode,sitOut=[],showScore){
+  const round=document.createElement("div"); round.className="round";
+  round.innerHTML=`<div class="round-header"><h3>Round ${num}</h3>
+  <label class="done"><input type="checkbox" onchange="toggleDone(this)"> Done</label></div>`;
+  const courtsDiv=document.createElement("div"); courtsDiv.className="courts";
+  matches.forEach((m,i)=>{
+    if(mode==="teams"){
+      courtsDiv.innerHTML+=`<div class="court">
+        <div class="court-title">Court ${i+1}</div>
+        <div class="vs">${m[0]} vs ${m[1]}</div>
+        <div class="score">
+          <input type="number" class="score-input" placeholder="0"> :
+          <input type="number" class="score-input" placeholder="0">
+        </div>
+      </div>`;
+    } else {
+      courtsDiv.innerHTML+=`<div class="court">
+        <div class="court-title">Court ${i+1}</div>
+        <div class="vs">${m.A.join(" & ")} vs ${m.B.join(" & ")}</div>
+      </div>`;
     }
-
-    round.appendChild(courtsDiv);
-    document.getElementById("output").appendChild(round);
   });
+  round.appendChild(courtsDiv);
+
+  // Sit-outs at the bottom of round
+  if(sitOut.length){
+    const sitDiv=document.createElement("div");
+    sitDiv.className="sitout";
+    sitDiv.innerHTML=`<strong>Sit out:</strong> ${sitOut.join(", ")}`;
+    round.appendChild(sitDiv);
+  }
+
+  qs("output").appendChild(round);
 }
 </script>
 </body>
