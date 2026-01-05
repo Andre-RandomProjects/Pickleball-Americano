@@ -5,18 +5,28 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PickleBall Scheduler</title>
 <style>
-body { font-family: Arial,sans-serif; background:#f4f6f8; padding:15px; }
+body { font-family: Arial, sans-serif; background:#f4f6f8; padding:15px; }
 .container { max-width:1100px; margin:auto; }
-label { font-weight:bold; display:block; margin-top:12px; }
-textarea,input,select { width:100%; margin-top:6px; padding:8px; font-size:16px; }
-textarea { height:150px; }
-.button-row { display:flex; gap:10px; margin-top:12px; }
+
+/* Form fields layout */
+.form-group { margin-top:12px; display:flex; flex-direction:column; }
+.form-group label { font-weight:bold; margin-bottom:6px; }
+.form-group input, .form-group select, .form-group textarea { padding:8px; font-size:16px; border-radius:6px; border:1px solid #ccc; }
+textarea { height:150px; resize:vertical; }
+
+/* Number input max width */
+input[type=number] { max-width:120px; }
+
+/* Button row */
+.button-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
 button { padding:12px; border:none; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; }
 .generate { background:#1976d2; color:#fff; }
 .reset { background:#d32f2f; color:#fff; }
 
+/* Warnings */
 .warning { background:#fff3cd; border:1px solid #ffeeba; border-radius:6px; padding:12px; margin-top:14px; color:#856404; font-weight:bold; }
 
+/* Rounds / courts display */
 .round { background:#fff; border-radius:10px; padding:15px; margin-top:18px; box-shadow:0 4px 10px rgba(0,0,0,.08); }
 .round-header { display:flex; justify-content:space-between; border-bottom:1px solid #eee; font-weight:bold; }
 
@@ -29,6 +39,7 @@ button { padding:12px; border:none; border-radius:6px; font-size:16px; font-weig
 
 .sitout { margin-top:10px; font-style:italic; color:#555; }
 
+/* Tabs */
 .tabs { display:flex; gap:10px; margin-top:15px; }
 .tab { padding:8px 16px; background:#eee; cursor:pointer; border-radius:6px; font-weight:bold; }
 .tab.active { background:#1976d2; color:#fff; }
@@ -40,23 +51,28 @@ th,td { border:1px solid #ddd; padding:6px; text-align:center; }
 th { background:#f1f1f1; }
 
 .score-input { width:45px; text-align:center; font-weight:bold; }
-</style>
-</head>
+</style></head>
 <body>
 <div class="container">
 <h2>PickleBall Scheduler</h2>
 
-<label>Match Type</label>
-<select id="mode" onchange="clearAll()">
-  <option value="teams">Singles / Teams</option>
-  <option value="americano">Doubles (Americano)</option>
-</select>
+<div class="form-group">
+  <label>Match Type</label>
+  <select id="mode" onchange="clearAll()">
+    <option value="teams">Singles / Teams</option>
+    <option value="americano">Doubles (Americano)</option>
+  </select>
+</div>
 
-<label>Players / Teams (one per line)</label>
-<textarea id="entries"></textarea>
+<div class="form-group">
+  <label>Players / Teams (one per line)</label>
+  <textarea id="entries"></textarea>
+</div>
 
-<label>Number of courts (max 4)</label>
-<input type="number" id="courts" min="1" max="4" value="2">
+<div class="form-group">
+  <label>Number of courts (max 4)</label>
+  <input type="number" id="courts" min="1" max="4" value="2">
+</div>
 
 <div class="button-row">
   <button class="generate" onclick="generate()">Generate</button>
