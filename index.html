@@ -149,9 +149,8 @@ function reloadCSS(){
   document.head.appendChild(css);
 }
 
-/* ========== TEAMS ROUND-ROBIN FIXED ========== */
+/* ========== TEAMS ROUND-ROBIN ========== */
 function generateTeamRounds(teams, courts){
-  // generate all matches via circle method
   let list=[...teams];
   const n=list.length;
   if(n%2) list.push("BYE");
@@ -165,13 +164,8 @@ function generateTeamRounds(teams, courts){
     allMatches.push(...matches);
     list.splice(1,0,list.pop());
   }
-  
-  // now schedule rounds with all courts used
-  const rounds=[];
-  const lastPlayed={};
-  teams.forEach(t=>lastPlayed[t]=-1);
-  let roundNum=0;
 
+  const rounds=[];
   while(allMatches.length){
     const roundMatches=[];
     const usedTeams=new Set();
@@ -184,7 +178,7 @@ function generateTeamRounds(teams, courts){
         i--;
       }
     }
-    // if still less than courts, allow teams to repeat if unavoidable
+    // fill remaining courts if possible
     let j=0;
     while(roundMatches.length<courts && allMatches.length){
       const m=allMatches[j];
@@ -192,10 +186,8 @@ function generateTeamRounds(teams, courts){
       usedTeams.add(m[0]); usedTeams.add(m[1]);
       allMatches.splice(j,1);
     }
-
     const sitOut=teams.filter(t=>!usedTeams.has(t));
     rounds.push({matches:roundMatches,sitOut});
-    roundNum++;
   }
   return rounds;
 }
@@ -219,7 +211,6 @@ function renderTeamRound(num,r){
         </div>
       </div>`;
   });
-
   for(let i=r.matches.length;i<totalCourts;i++){
     courtsDiv.innerHTML+=`
       <div class="court" style="background:#ffe0e0">
@@ -227,14 +218,11 @@ function renderTeamRound(num,r){
         <div class="vs">Unused</div>
       </div>`;
   }
-
   div.appendChild(courtsDiv);
-
   const sit=document.createElement("div");
   sit.className="sitout";
   sit.innerHTML=`<strong>Sit out:</strong> ${r.sitOut.join(", ")||"None"}`;
   div.appendChild(sit);
-
   qs("rounds").appendChild(div);
 }
 
@@ -272,23 +260,24 @@ function buildScoreboard(teams){
   update();
 }
 
-/* ================= AMERICANO ================= */
+/* ========== AMERICANO FIXED SIT-OUT ========== */
 function generateAmericano(players,courts){
   const rounds=[];
   const slots=courts*4;
   const pool=[...players];
-  let sitQueue=[...pool];
-  shuffle(sitQueue);
+  let remainingSitOut=[...pool];
+  shuffle(remainingSitOut);
+
   const pairHistory=new Set();
   const key=(a,b)=>[a,b].sort().join("|");
 
-  let maxRounds=players.length*3;
+  const maxRounds=Math.ceil(players.length*3); // safe max
   for(let r=0;r<maxRounds;r++){
-    if(sitQueue.length<pool.length-slots){
-      sitQueue=[...pool];
-      shuffle(sitQueue);
+    if(remainingSitOut.length<pool.length-slots){
+      remainingSitOut=[...pool];
+      shuffle(remainingSitOut);
     }
-    const sitOut=sitQueue.splice(0,Math.max(0,pool.length-slots));
+    const sitOut=remainingSitOut.splice(0,Math.max(0,pool.length-slots));
     const active=pool.filter(p=>!sitOut.includes(p));
     shuffle(active);
     const used=new Set();
@@ -333,7 +322,6 @@ function renderAmericanoRound(num,r){
         </div>
       </div>`;
   });
-
   div.appendChild(courtsDiv);
   const sit=document.createElement("div");
   sit.className="sitout";
@@ -342,7 +330,7 @@ function renderAmericanoRound(num,r){
   qs("americanoOutput").appendChild(div);
 }
 
-/* ================= MAIN ================= */
+/* ========== MAIN GENERATE ========== */
 function generate(){
   clearAll();
   let entries=qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
