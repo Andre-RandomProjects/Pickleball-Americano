@@ -4,64 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PickleBall Scheduler</title>
-<style id="dynamicCSS">
-body { font-family: Arial,sans-serif; background:#f4f6f8; padding:15px; }
-.container { max-width:1100px; margin:auto; }
-
-.form-group { margin-top:12px; display:flex; flex-direction:column; }
-.form-group label { font-weight:bold; margin-bottom:6px; }
-.form-group input, .form-group select, .form-group textarea {
-  padding:8px; font-size:16px; border-radius:6px; border:1px solid #ccc;
-}
-textarea { height:150px; resize:vertical; }
-input[type=number] { max-width:120px; }
-
-.button-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
-button { padding:12px; border:none; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; }
-.generate { background:#1976d2; color:#fff; }
-.reset { background:#d32f2f; color:#fff; }
-
-.warning {
-  background:#fff3cd; border:1px solid #ffeeba; border-radius:6px;
-  padding:12px; margin-top:14px; color:#856404; font-weight:bold;
-}
-
-.round {
-  background:#fff; border-radius:10px; padding:15px; margin-top:18px;
-  box-shadow:0 4px 10px rgba(0,0,0,.08);
-}
-.round-header {
-  display:flex; justify-content:space-between;
-  border-bottom:1px solid #eee; font-weight:bold;
-}
-
-.courts { display:grid; gap:10px; margin-top:10px; }
-@media(min-width:700px){
-  .courts { grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
-}
-
-.court {
-  background:#f9fafb; border:1px solid #e3e6ea; border-radius:8px;
-  padding:10px; text-align:center;
-}
-.court-title { font-weight:bold; margin-bottom:6px; }
-.vs { font-weight:bold; line-height:1.4; }
-
-.sitout { margin-top:10px; font-style:italic; color:#555; }
-
-.tabs { display:flex; gap:10px; margin-top:15px; }
-.tab { padding:8px 16px; background:#eee; cursor:pointer; border-radius:6px; font-weight:bold; }
-.tab.active { background:#1976d2; color:#fff; }
-
-.tab-content { display:none; }
-.tab-content.active { display:block; }
-
-table { width:100%; border-collapse:collapse; margin-top:10px; }
-th,td { border:1px solid #ddd; padding:6px; text-align:center; }
-th { background:#f1f1f1; }
-
-.score-input { width:45px; text-align:center; font-weight:bold; }
-</style>
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -70,7 +13,7 @@ th { background:#f1f1f1; }
 
   <div class="form-group">
     <label>Match Type</label>
-    <select id="mode" onchange="clearAll()">
+    <select id="mode">
       <option value="teams">Singles / Teams</option>
       <option value="americano">Doubles (Americano)</option>
     </select>
@@ -87,8 +30,8 @@ th { background:#f1f1f1; }
   </div>
 
   <div class="button-row">
-    <button class="generate" onclick="generate()">Generate</button>
-    <button class="reset" onclick="resetAll()">Reset</button>
+    <button id="generateBtn">Generate</button>
+    <button id="resetBtn">Reset</button>
   </div>
 
   <div id="warning"></div>
@@ -96,8 +39,8 @@ th { background:#f1f1f1; }
   <!-- Teams tabs -->
   <div id="teamsTabs" style="display:none;">
     <div class="tabs">
-      <div class="tab active" onclick="switchTab('rounds')">Rounds</div>
-      <div class="tab" onclick="switchTab('score')">Scoreboard</div>
+      <div class="tab active" data-tab="rounds">Rounds</div>
+      <div class="tab" data-tab="score">Scoreboard</div>
     </div>
     <div id="rounds" class="tab-content active"></div>
     <div id="score" class="tab-content"></div>
@@ -107,261 +50,6 @@ th { background:#f1f1f1; }
   <div id="americanoOutput"></div>
 </div>
 
-<script>
-const qs=id=>document.getElementById(id);
-
-function shuffle(arr){
-  for(let i=arr.length-1;i>0;i--){
-    const j=Math.floor(Math.random()*(i+1));
-    [arr[i],arr[j]]=[arr[j],arr[i]];
-  }
-}
-
-function clearAll(){
-  qs("warning").innerHTML="";
-  qs("rounds").innerHTML="";
-  qs("score").innerHTML="";
-  qs("americanoOutput").innerHTML="";
-  qs("teamsTabs").style.display="none";
-}
-
-function resetAll(){
-  if(!confirm("Reset everything?")) return;
-  qs("entries").value="";
-  qs("courts").value=2;
-  clearAll();
-  reloadCSS();
-}
-
-function switchTab(id){
-  document.querySelectorAll(".tab").forEach(t=>t.classList.remove("active"));
-  document.querySelectorAll(".tab-content").forEach(c=>c.classList.remove("active"));
-  document.querySelectorAll(".tab")[id==="rounds"?0:1].classList.add("active");
-  qs(id).classList.add("active");
-}
-
-function reloadCSS(){
-  let old = document.getElementById("dynamicCSS");
-  if(old) old.remove();
-  const css = document.createElement("style");
-  css.id = "dynamicCSS";
-  css.innerHTML = document.querySelector("style").innerHTML;
-  document.head.appendChild(css);
-}
-
-/* ========== TEAMS ROUND-ROBIN ========== */
-function generateTeamRounds(teams, courts){
-  let list=[...teams];
-  const n=list.length;
-  if(n%2) list.push("BYE");
-  const allMatches=[];
-  for(let r=0;r<list.length-1;r++){
-    const matches=[];
-    for(let i=0;i<list.length/2;i++){
-      const a=list[i],b=list[list.length-1-i];
-      if(a!=="BYE" && b!=="BYE") matches.push([a,b]);
-    }
-    allMatches.push(...matches);
-    list.splice(1,0,list.pop());
-  }
-
-  const rounds=[];
-  while(allMatches.length){
-    const roundMatches=[];
-    const usedTeams=new Set();
-    for(let i=0;i<allMatches.length && roundMatches.length<courts;i++){
-      const m=allMatches[i];
-      if(!usedTeams.has(m[0]) && !usedTeams.has(m[1])){
-        roundMatches.push(m);
-        usedTeams.add(m[0]); usedTeams.add(m[1]);
-        allMatches.splice(i,1);
-        i--;
-      }
-    }
-    // fill remaining courts if possible
-    let j=0;
-    while(roundMatches.length<courts && allMatches.length){
-      const m=allMatches[j];
-      roundMatches.push(m);
-      usedTeams.add(m[0]); usedTeams.add(m[1]);
-      allMatches.splice(j,1);
-    }
-    const sitOut=teams.filter(t=>!usedTeams.has(t));
-    rounds.push({matches:roundMatches,sitOut});
-  }
-  return rounds;
-}
-
-function renderTeamRound(num,r){
-  const div=document.createElement("div");
-  div.className="round";
-  div.innerHTML=`<div class="round-header">Round ${num}</div>`;
-  const courtsDiv=document.createElement("div");
-  courtsDiv.className="courts";
-
-  const totalCourts=parseInt(qs("courts").value);
-  r.matches.forEach((m,i)=>{
-    courtsDiv.innerHTML+=`
-      <div class="court">
-        <div class="court-title">Court ${i+1}</div>
-        <div class="vs">${m[0]} vs ${m[1]}</div>
-        <div>
-          <input class="score-input" type="number"> :
-          <input class="score-input" type="number">
-        </div>
-      </div>`;
-  });
-  for(let i=r.matches.length;i<totalCourts;i++){
-    courtsDiv.innerHTML+=`
-      <div class="court" style="background:#ffe0e0">
-        <div class="court-title">Court ${i+1}</div>
-        <div class="vs">Unused</div>
-      </div>`;
-  }
-  div.appendChild(courtsDiv);
-  const sit=document.createElement("div");
-  sit.className="sitout";
-  sit.innerHTML=`<strong>Sit out:</strong> ${r.sitOut.join(", ")||"None"}`;
-  div.appendChild(sit);
-  qs("rounds").appendChild(div);
-}
-
-function buildScoreboard(teams){
-  const data={};
-  teams.forEach(t=>data[t]={won:0,lost:0,points:0});
-  function update(){
-    teams.forEach(t=>data[t]={won:0,lost:0,points:0});
-    document.querySelectorAll(".court").forEach(c=>{
-      const vs=c.querySelector(".vs");
-      const inputs=c.querySelectorAll(".score-input");
-      if(!vs||inputs.length!==2) return;
-      const [a,b]=vs.textContent.split(" vs ");
-      const sa=parseInt(inputs[0].value)||0;
-      const sb=parseInt(inputs[1].value)||0;
-      data[a].points+=sa;
-      data[b].points+=sb;
-      if(sa>sb){data[a].won++;data[b].lost++;}
-      if(sb>sa){data[b].won++;data[a].lost++;}
-    });
-    const sorted=[...teams].sort((x,y)=>{
-      if(data[y].won!==data[x].won) return data[y].won-data[x].won;
-      return data[y].points-data[x].points;
-    });
-    let html=`<table><tr><th>Team</th><th>Won</th><th>Lost</th><th>Points</th></tr>`;
-    sorted.forEach(t=>{
-      html+=`<tr><td>${t}</td><td>${data[t].won}</td><td>${data[t].lost}</td><td>${data[t].points}</td></tr>`;
-    });
-    html+="</table>";
-    qs("score").innerHTML=html;
-  }
-  document.addEventListener("input",e=>{
-    if(e.target.classList.contains("score-input")) update();
-  });
-  update();
-}
-
-/* ========== AMERICANO FIXED SIT-OUT ========== */
-function generateAmericano(players,courts){
-  const rounds=[];
-  const slots=courts*4;
-  const pool=[...players];
-  let remainingSitOut=[...pool];
-  shuffle(remainingSitOut);
-
-  const pairHistory=new Set();
-  const key=(a,b)=>[a,b].sort().join("|");
-
-  const maxRounds=Math.ceil(players.length*3); // safe max
-  for(let r=0;r<maxRounds;r++){
-    if(remainingSitOut.length<pool.length-slots){
-      remainingSitOut=[...pool];
-      shuffle(remainingSitOut);
-    }
-    const sitOut=remainingSitOut.splice(0,Math.max(0,pool.length-slots));
-    const active=pool.filter(p=>!sitOut.includes(p));
-    shuffle(active);
-    const used=new Set();
-    const matches=[];
-    for(let c=0;c<courts;c++){
-      const avail=active.filter(p=>!used.has(p));
-      if(avail.length<4) break;
-      let best=null,bestScore=1e9;
-      for(let i=0;i<avail.length;i++)
-      for(let j=i+1;j<avail.length;j++)
-      for(let k=j+1;k<avail.length;k++)
-      for(let l=k+1;l<avail.length;l++){
-        const g=[avail[i],avail[j],avail[k],avail[l]];
-        let s=0;
-        for(let a=0;a<4;a++) for(let b=a+1;b<4;b++)
-          if(pairHistory.has(key(g[a],g[b]))) s++;
-        if(s<bestScore){bestScore=s;best=g;}
-      }
-      best.forEach(p=>used.add(p));
-      matches.push({A:[best[0],best[1]],B:[best[2],best[3]]});
-      for(let a=0;a<4;a++) for(let b=a+1;b<4;b++)
-        pairHistory.add(key(best[a],best[b]));
-    }
-    rounds.push({matches,sit:sitOut});
-  }
-  return rounds;
-}
-
-function renderAmericanoRound(num,r){
-  const div=document.createElement("div");
-  div.className="round";
-  div.innerHTML=`<div class="round-header">Round ${num}</div>`;
-  const courtsDiv=document.createElement("div");
-  courtsDiv.className="courts";
-
-  r.matches.forEach((m,i)=>{
-    courtsDiv.innerHTML+=`
-      <div class="court">
-        <div class="court-title">Court ${i+1}</div>
-        <div class="vs">
-          ${m.A[0]} & ${m.A[1]}<br>vs<br>${m.B[0]} & ${m.B[1]}
-        </div>
-      </div>`;
-  });
-  div.appendChild(courtsDiv);
-  const sit=document.createElement("div");
-  sit.className="sitout";
-  sit.innerHTML=`<strong>Sit out:</strong> ${r.sit.join(", ")||"None"}`;
-  div.appendChild(sit);
-  qs("americanoOutput").appendChild(div);
-}
-
-/* ========== MAIN GENERATE ========== */
-function generate(){
-  clearAll();
-  let entries=qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
-  shuffle(entries);
-  let courts=parseInt(qs("courts").value);
-  if(courts>4){courts=4; qs("courts").value=4;}
-
-  if(qs("mode").value==="teams"){
-    if(entries.length<2*courts){
-      qs("warning").innerHTML=
-        `Not enough teams to fill all courts.<br>
-         ${entries.length} teams for ${courts} courts.<br>
-         Total teams required: ${2*courts}`;
-      return;
-    }
-    qs("teamsTabs").style.display="block";
-    const rounds=generateTeamRounds(entries,courts);
-    rounds.forEach((r,i)=>renderTeamRound(i+1,r));
-    buildScoreboard(entries);
-  } else {
-    if(entries.length<courts*4){
-      qs("warning").innerHTML=
-        `Not enough players to fill all courts.<br>
-         ${entries.length} players for ${courts} courts.<br>
-         Total players required: ${courts*4}`;
-      return;
-    }
-    generateAmericano(entries,courts)
-      .forEach((r,i)=>renderAmericanoRound(i+1,r));
-  }
-}
-</script>
+<script type="module" src="Main.js"></script>
 </body>
 </html>
