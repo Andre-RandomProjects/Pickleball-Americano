@@ -1,0 +1,56 @@
+body { font-family: Arial,sans-serif; background:#f4f6f8; padding:15px; }
+.container { max-width:1100px; margin:auto; }
+
+.form-group { margin-top:12px; display:flex; flex-direction:column; }
+.form-group label { font-weight:bold; margin-bottom:6px; }
+.form-group input, .form-group select, .form-group textarea {
+  padding:8px; font-size:16px; border-radius:6px; border:1px solid #ccc;
+}
+textarea { height:150px; resize:vertical; }
+input[type=number] { max-width:120px; }
+
+.button-row { display:flex; gap:10px; flex-wrap:wrap; margin-top:12px; }
+button { padding:12px; border:none; border-radius:6px; font-size:16px; font-weight:bold; cursor:pointer; }
+.generate { background:#1976d2; color:#fff; }
+.reset { background:#d32f2f; color:#fff; }
+
+.warning {
+  background:#fff3cd; border:1px solid #ffeeba; border-radius:6px;
+  padding:12px; margin-top:14px; color:#856404; font-weight:bold;
+}
+
+.round {
+  background:#fff; border-radius:10px; padding:15px; margin-top:18px;
+  box-shadow:0 4px 10px rgba(0,0,0,.08);
+}
+.round-header {
+  display:flex; justify-content:space-between;
+  border-bottom:1px solid #eee; font-weight:bold;
+}
+
+.courts { display:grid; gap:10px; margin-top:10px; }
+@media(min-width:700px){
+  .courts { grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); }
+}
+
+.court {
+  background:#f9fafb; border:1px solid #e3e6ea; border-radius:8px;
+  padding:10px; text-align:center;
+}
+.court-title { font-weight:bold; margin-bottom:6px; }
+.vs { font-weight:bold; line-height:1.4; }
+
+.sitout { margin-top:10px; font-style:italic; color:#555; }
+
+.tabs { display:flex; gap:10px; margin-top:15px; }
+.tab { padding:8px 16px; background:#eee; cursor:pointer; border-radius:6px; font-weight:bold; }
+.tab.active { background:#1976d2; color:#fff; }
+
+.tab-content { display:none; }
+.tab-content.active { display:block; }
+
+table { width:100%; border-collapse:collapse; margin-top:10px; }
+th,td { border:1px solid #ddd; padding:6px; text-align:center; }
+th { background:#f1f1f1; }
+
+.score-input { width:45px; text-align:center; font-weight:bold; }
