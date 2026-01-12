@@ -1,55 +1,52 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PickleBall Scheduler</title>
-<link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PickleBall Scheduler</title>
+    <link rel="stylesheet" href="styles.css?V1">
 </head>
-<body>
+<body onload="restoreFromStorage()">
+    <div class="container">
+        <h2>PickleBall Scheduler</h2>
 
-<div class="container">
-  <h2>PickleBall Scheduler</h2>
+        <label>Match Type</label>
+        <select id="mode" onchange="clearAll()">
+            <option value="teams">Singles / Teams</option>
+            <option value="americano">Doubles (Americano)</option>
+        </select>
 
-  <div class="form-group">
-    <label>Match Type</label>
-    <select id="mode">
-      <option value="teams">Singles / Teams</option>
-      <option value="americano">Doubles (Americano)</option>
-    </select>
-  </div>
+        <label>Players / Teams (one per line)</label>
+        <textarea id="entries"></textarea>
 
-  <div class="form-group">
-    <label>Players / Teams (one per line)</label>
-    <textarea id="entries"></textarea>
-  </div>
+        <label>Number of courts</label>
+        <input type="number" id="courts" min="1" max="4" value="2">
 
-  <div class="form-group">
-    <label>Number of courts (max 4)</label>
-    <input type="number" id="courts" min="1" max="4" value="2">
-  </div>
+        <div class="button-row">
+            <button class="generate" onclick="generate()">Generate</button>
+            <button class="reset" onclick="resetAll()">Reset</button>
+            <button class="export" onclick="exportData()">Export to Excel</button>
+        </div>
 
-  <div class="button-row">
-    <button id="generateBtn">Generate</button>
-    <button id="resetBtn">Reset</button>
-  </div>
+        <div id="warning"></div>
 
-  <div id="warning"></div>
+        <!-- Tabs -->
+        <div id="teamsTabs" style="display:none;">
+            <div class="tabs">
+                <div class="tab active" onclick="switchTab('rounds')">Rounds</div>
+                <div class="tab" onclick="switchTab('score')">Scoreboard</div>
+            </div>
+            <div id="rounds" class="tab-content active"></div>
+            <div id="score" class="tab-content"></div>
+        </div>
 
-  <!-- Teams tabs -->
-  <div id="teamsTabs" style="display:none;">
-    <div class="tabs">
-      <div class="tab active" data-tab="rounds">Rounds</div>
-      <div class="tab" data-tab="score">Scoreboard</div>
+        <!-- Americano Output -->
+        <div id="americanoOutput"></div>
     </div>
-    <div id="rounds" class="tab-content active"></div>
-    <div id="score" class="tab-content"></div>
-  </div>
 
-  <!-- Americano output -->
-  <div id="americanoOutput"></div>
-</div>
-
-<script type="module" src="Main.js"></script>
+    <!-- Scripts -->
+    <script src="Main.js"></script>
+    <script src="Tournament.js"></script>
+    <script src="Americano.js"></script>
 </body>
 </html>
