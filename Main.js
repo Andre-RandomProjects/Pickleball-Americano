@@ -1,5 +1,21 @@
 function qs(id){ return document.getElementById(id); }
 
+function showWarning(msg){
+  const w = qs("warning");
+  if(!w) return;
+  w.textContent = msg;
+  w.className = "warning";
+  w.style.display = "block";
+}
+
+function hideWarning(){
+  const w = qs("warning");
+  if(!w) return;
+  w.textContent = "";
+  w.style.display = "none";
+  w.className = "";
+}
+
 // LocalStorage functions
 function saveTournamentData() {
   const data = {
@@ -62,7 +78,7 @@ function clearTournamentData() {
 
 function clearAll(){
   if(qs("output")) qs("output").innerHTML="";
-  if(qs("warning")) qs("warning").innerHTML="";
+  hideWarning();
   if(qs("scoreboard")) qs("scoreboard").innerHTML="";
   if(qs("rounds")) qs("rounds").innerHTML="";
   if(qs("score")) qs("score").innerHTML="";
@@ -87,16 +103,17 @@ function switchTab(tab){
 
 function generate(){
   clearAll();
+  hideWarning();
   const mode = qs("mode").value;
   const entries = qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
   const courts = parseInt(qs("courts").value);
 
   if(mode==="teams"){
     if(entries.length < courts * 2) {
-      qs("warning").innerHTML = `Not enough teams to fill ${courts} courts. Needed: ${courts*2}, Found: ${entries.length}.`;
+      showWarning(`Not enough teams to fill ${courts} courts. Needed: ${courts*2}, Found: ${entries.length}.`);
       return;
     }
-    if(entries.length<2){ qs("warning").innerHTML="At least 2 teams required."; return; }
+    if(entries.length<2){ showWarning("At least 2 teams required."); return; }
     qs("teamsTabs").style.display="block";
     const rounds = generateTeamRounds(entries,courts);
     rounds.forEach((r,i)=>renderTeamRound(i+1,r));
@@ -106,10 +123,10 @@ function generate(){
 
   if(mode==="americano"){
     if(entries.length < courts * 4) {
-      qs("warning").innerHTML = `Not enough players to fill ${courts} courts. Needed: ${courts*4}, Found: ${entries.length}.`;
+      showWarning(`Not enough players to fill ${courts} courts. Needed: ${courts*4}, Found: ${entries.length}.`);
       return;
     }
-    if(entries.length < 4){ qs("warning").innerHTML="At least 4 players required."; return; }
+    if(entries.length < 4){ showWarning("At least 4 players required."); return; }
     startAmericano(entries,courts); // progressive next round
     saveTournamentData(); // Save after successful generation
   }
@@ -271,6 +288,7 @@ function restoreScores(savedScores) {
 function restoreFromStorage() {
   if (loadTournamentData()) {
     // If we have saved data, automatically generate the rounds
+    hideWarning();
     const mode = qs("mode").value;
     const entries = qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
     const courts = parseInt(qs("courts").value);
