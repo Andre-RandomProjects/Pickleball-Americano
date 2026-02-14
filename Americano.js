@@ -128,29 +128,20 @@ function generateAmericanoRound(){
 
 // Deterministic Backtracking Solver for optimal pairings with opponent tracking
 function solveBestMatches(players, courts, playedPairs, playedOpponents, rankedMode = false, playerStats = {}) {
+  // In RANKED mode: Use skill-first approach
+  if (rankedMode && Object.keys(playerStats).length > 0) {
+    return solveRankedMatches(players, courts, playedPairs, playedOpponents, playerStats);
+  }
+  
+  // In REGULAR mode: Use original rotation-first approach
   let bestSolution = null;
   let minTotalCost = Infinity;
-
-  // We need to partition players into 'courts * 2' pairs (to form 'courts' matches)
-  // Step 1: Find optimal partner pairings
-  // Step 2: Find optimal opponent matchings (with ranking consideration if ranked mode)
 
   function findPartition(currentPairs, usedPlayersMask) {
     // Base case: We have enough pairs to cover all players
     if (currentPairs.length === players.length / 2) {
       // Calculate partnership cost
-      let partnershipCost = currentPairs.reduce((sum, p) => sum + Math.pow(p.cost, 3), 0);
-      
-      // In ranked mode, add penalty for mismatched skill levels in partnerships
-      if (rankedMode && Object.keys(playerStats).length > 0) {
-        currentPairs.forEach(pair => {
-          const rating1 = playerStats[pair.p1]?.rating || 1000;
-          const rating2 = playerStats[pair.p2]?.rating || 1000;
-          const ratingDiff = Math.abs(rating1 - rating2);
-          // Small penalty for skill mismatch in partnerships (we want balanced teams)
-          partnershipCost += ratingDiff * 0.1;
-        });
-      }
+      const partnershipCost = currentPairs.reduce((sum, p) => sum + Math.pow(p.cost, 3), 0);
       
       if (partnershipCost < minTotalCost) {
         minTotalCost = partnershipCost;
@@ -191,8 +182,8 @@ function solveBestMatches(players, courts, playedPairs, playedOpponents, rankedM
 
         findPartition(currentPairs, usedPlayersMask);
         
-        // Early exit if perfect solution found (only in non-ranked mode)
-        if (minTotalCost === 0 && !rankedMode) return;
+        // Early exit if perfect solution found
+        if (minTotalCost === 0) return;
         
         // Backtrack
         currentPairs.pop();
@@ -211,8 +202,62 @@ function solveBestMatches(players, courts, playedPairs, playedOpponents, rankedM
   }
 
   // Step 2: Group pairs into matches, minimizing opponent repetition
-  // In ranked mode, also consider skill-based matchmaking
-  const matchCombinations = findBestMatchPairing(bestSolution, playedOpponents, rankedMode, playerStats);
+  const matchCombinations = findBestMatchPairing(bestSolution, playedOpponents, false, playerStats);
+  
+  return matchCombinations;
+}
+
+// RANKED MODE: Skill-first matching algorithm
+function solveRankedMatches(players, courts, playedPairs, playedOpponents, playerStats) {
+  // Sort players by rating (highest to lowest)
+  const sortedPlayers = [...players].sort((a, b) => {
+    const ratingA = playerStats[a]?.rating || 1000;
+    const ratingB = playerStats[b]?.rating || 1000;
+    return ratingB - ratingA;
+  });
+  
+  // Create skill-based pairs with rotation consideration
+  const pairs = [];
+  const usedPlayers = new Set();
+  
+  // Strategy: Pair players with similar ratings, but avoid recent repeats
+  for (let i = 0; i < sortedPlayers.length; i++) {
+    if (usedPlayers.has(sortedPlayers[i])) continue;
+    
+    const p1 = sortedPlayers[i];
+    let bestPartner = null;
+    let bestPartnerScore = Infinity;
+    
+    // Find best partner for p1
+    for (let j = i + 1; j < sortedPlayers.length; j++) {
+      if (usedPlayers.has(sortedPlayers[j])) continue;
+      
+      const p2 = sortedPlayers[j];
+      const key = [p1, p2].sort().join("|");
+      const repeatCount = playedPairs[key] || 0;
+      
+      const rating1 = playerStats[p1]?.rating || 1000;
+      const rating2 = playerStats[p2]?.rating || 1000;
+      const ratingDiff = Math.abs(rating1 - rating2);
+      
+      // Score: Heavy penalty for repeats, moderate penalty for skill mismatch
+      const score = (repeatCount * 100) + (ratingDiff * 0.5);
+      
+      if (score < bestPartnerScore) {
+        bestPartnerScore = score;
+        bestPartner = p2;
+      }
+    }
+    
+    if (bestPartner) {
+      pairs.push({ p1, p2: bestPartner, key: [p1, bestPartner].sort().join("|") });
+      usedPlayers.add(p1);
+      usedPlayers.add(bestPartner);
+    }
+  }
+  
+  // Group pairs into matches with skill-based opponent matching
+  const matchCombinations = findBestMatchPairing(pairs, playedOpponents, true, playerStats);
   
   return matchCombinations;
 }
@@ -228,9 +273,6 @@ function findBestMatchPairing(pairs, playedOpponents, rankedMode = false, player
     }];
   }
 
-  let bestMatches = null;
-  let minOpponentCost = Infinity;
-
   // Helper to calculate team average rating
   function getTeamRating(team) {
     if (!rankedMode || Object.keys(playerStats).length === 0) return 1000;
@@ -238,12 +280,40 @@ function findBestMatchPairing(pairs, playedOpponents, rankedMode = false, player
     return ratings.reduce((a, b) => a + b, 0) / ratings.length;
   }
 
+  // In RANKED mode, use a simpler, more direct approach
+  if (rankedMode && Object.keys(playerStats).length > 0) {
+    // Calculate rating for each pair
+    const pairsWithRatings = pairs.map(pair => ({
+      ...pair,
+      rating: getTeamRating([pair.p1, pair.p2])
+    }));
+    
+    // Sort pairs by rating
+    pairsWithRatings.sort((a, b) => b.rating - a.rating);
+    
+    // Match adjacent pairs (similar skill levels)
+    const matches = [];
+    for (let i = 0; i < pairsWithRatings.length; i += 2) {
+      if (i + 1 < pairsWithRatings.length) {
+        matches.push({
+          A: [pairsWithRatings[i].p1, pairsWithRatings[i].p2],
+          B: [pairsWithRatings[i + 1].p1, pairsWithRatings[i + 1].p2]
+        });
+      }
+    }
+    
+    return matches;
+  }
+
+  // REGULAR mode: Use exhaustive search for best rotation
+  let bestMatches = null;
+  let minOpponentCost = Infinity;
+
   // Recursive function to try all pairings
   function tryPairings(remainingPairs, currentMatches) {
     if (remainingPairs.length === 0) {
-      // Calculate total cost for this configuration
+      // Calculate total opponent cost for this configuration
       let opponentCost = 0;
-      let rankingCost = 0;
       
       currentMatches.forEach(match => {
         // Check how many times these players have faced each other
@@ -254,23 +324,10 @@ function findBestMatchPairing(pairs, playedOpponents, rankedMode = false, player
             opponentCost += Math.pow(count, 2); // Quadratic penalty for opponent repetition
           });
         });
-        
-        // In ranked mode, penalize mismatched team ratings
-        if (rankedMode) {
-          const teamARating = getTeamRating(match.A);
-          const teamBRating = getTeamRating(match.B);
-          const ratingDiff = Math.abs(teamARating - teamBRating);
-          
-          // Strong penalty for mismatched teams (we want competitive matches)
-          rankingCost += Math.pow(ratingDiff / 100, 2);
-        }
       });
-      
-      // Combine costs (ranking cost is more important in ranked mode)
-      const totalCost = rankedMode ? (opponentCost + rankingCost * 5) : opponentCost;
 
-      if (totalCost < minOpponentCost) {
-        minOpponentCost = totalCost;
+      if (opponentCost < minOpponentCost) {
+        minOpponentCost = opponentCost;
         bestMatches = JSON.parse(JSON.stringify(currentMatches)); // Deep copy
       }
       return;
