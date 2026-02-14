@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PickleBall Scheduler</title>
-    <link rel="stylesheet" href="styles.css?V2">
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body onload="restoreFromStorage()">
     <div class="container">
@@ -14,6 +14,7 @@
         <select id="mode" onchange="clearAll()">
             <option value="teams">Singles / Teams</option>
             <option value="americano">Doubles (Americano)</option>
+            <option value="americano-ranked">Doubles (Americano - Ranked)</option>
         </select>
 
         <label>Players / Teams (one per line)</label>
@@ -50,4 +51,3 @@
     <script src="Americano.js"></script>
 </body>
 </html>
-
