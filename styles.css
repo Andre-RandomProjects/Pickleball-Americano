@@ -212,3 +212,71 @@ th {
     .tab-content.active {
         display: block;
     }
+
+/* Americano Rankings Styles */
+.rankings-container {
+    background: #fff;
+    border-radius: 10px;
+    padding: 15px;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 10px rgba(0,0,0,.08);
+}
+
+.rankings-container h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: #1976d2;
+}
+
+.rankings-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.rankings-table th {
+    background: #1976d2;
+    color: white;
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.rankings-table td {
+    padding: 8px;
+    text-align: center;
+    border-bottom: 1px solid #e3e6ea;
+}
+
+.rankings-table tr.top-tier {
+    background: #e8f5e9;
+}
+
+.rankings-table tr.mid-tier {
+    background: #fff9c4;
+}
+
+.rankings-table tr.low-tier {
+    background: #ffebee;
+}
+
+.rankings-table tr:hover {
+    opacity: 0.8;
+}
+
+/* Americano Score Input */
+.americano-score-input {
+    width: 50px;
+    padding: 4px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 16px;
+    margin: 0 4px;
+}
+
+.score-container {
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
