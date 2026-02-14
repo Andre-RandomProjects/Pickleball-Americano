@@ -78,22 +78,82 @@ function americanoNextRound(){
 }
 
 function generateAmericanoRound(){
-  const {players, courts, sitQueue, playedPairs, playedOpponents} = americanoState;
+  const {players, courts, sitQueue, playedPairs, playedOpponents, roundCounter} = americanoState;
   
   // Calculate how many can play (multiple of 4, limited by courts)
   const maxPlayable = Math.floor(players.length / 4) * 4;
   const actualPlaying = Math.min(courts * 4, maxPlayable);
   let sitCount = players.length - actualPlaying;
 
-  // Strict Sit-Out Rotation
-  // sitQueue contains players in order of "due to sit out".
-  // The first 'sitCount' players in the queue MUST sit out.
-  const sitOut = sitQueue.slice(0, sitCount);
+  // BALANCED Sit-Out Selection: Fair rotation + occasional smart shuffling
+  let sitOut;
+  let newQueue;
   
-  // Update Queue: Remove sitters from front, add to back
-  // This ensures they wait the longest before sitting again.
-  const newQueue = sitQueue.slice(sitCount); // Everyone else
-  newQueue.push(...sitOut); // Add sitters to end
+  // Calculate sit-out ratio
+  const sitOutRatio = sitCount / players.length;
+  
+  // Every 3 rounds in high-sitout scenarios (>30%), do intelligent swaps
+  const useSmartAdjustment = sitOutRatio > 0.3 && roundCounter > 5 && roundCounter % 3 === 0;
+  
+  if (useSmartAdjustment) {
+    // Calculate partnership gaps
+    const partnershipGaps = {};
+    players.forEach(p => {
+      let unplayed = 0;
+      players.forEach(other => {
+        if (p !== other) {
+          const key = [p, other].sort().join("|");
+          if ((playedPairs[key] || 0) === 0) unplayed++;
+        }
+      });
+      partnershipGaps[p] = unplayed;
+    });
+    
+    // Use standard queue but with a small swap
+    // Swap one high-gap player into play position if they're about to sit
+    let modifiedQueue = [...sitQueue];
+    const wouldSit = modifiedQueue.slice(0, sitCount);
+    const wouldPlay = modifiedQueue.slice(sitCount);
+    
+    // Find player with highest gap who would sit
+    let maxGapSitter = null;
+    let maxGap = 0;
+    wouldSit.forEach(p => {
+      if (partnershipGaps[p] > maxGap) {
+        maxGap = partnershipGaps[p];
+        maxGapSitter = p;
+      }
+    });
+    
+    // Find player with lowest gap who would play
+    let minGapPlayer = null;
+    let minGap = Infinity;
+    wouldPlay.forEach(p => {
+      if (partnershipGaps[p] < minGap) {
+        minGap = partnershipGaps[p];
+        minGapPlayer = p;
+      }
+    });
+    
+    // Swap if the gap difference is meaningful (>3)
+    if (maxGapSitter && minGapPlayer && (maxGap - minGap) > 3) {
+      const sitterIdx = modifiedQueue.indexOf(maxGapSitter);
+      const playerIdx = modifiedQueue.indexOf(minGapPlayer);
+      // Swap positions
+      [modifiedQueue[sitterIdx], modifiedQueue[playerIdx]] = 
+      [modifiedQueue[playerIdx], modifiedQueue[sitterIdx]];
+    }
+    
+    sitOut = modifiedQueue.slice(0, sitCount);
+    newQueue = modifiedQueue.slice(sitCount);
+    newQueue.push(...sitOut);
+  } else {
+    // Standard fair rotation
+    sitOut = sitQueue.slice(0, sitCount);
+    newQueue = sitQueue.slice(sitCount);
+    newQueue.push(...sitOut);
+  }
+  
   americanoState.sitQueue = newQueue;
 
   // Active players for this round
@@ -126,83 +186,96 @@ function generateAmericanoRound(){
   return {matches,sit:sitOut};
 }
 
-// Deterministic Backtracking Solver for optimal pairings with opponent tracking
+// Enhanced Pairing Algorithm with Sit-Out Awareness (fixes 2-court issues)
 function solveBestMatches(players, courts, playedPairs, playedOpponents, rankedMode = false, playerStats = {}) {
   // In RANKED mode: Use skill-first approach
   if (rankedMode && Object.keys(playerStats).length > 0) {
     return solveRankedMatches(players, courts, playedPairs, playedOpponents, playerStats);
   }
   
-  // In REGULAR mode: Use original rotation-first approach
-  let bestSolution = null;
-  let minTotalCost = Infinity;
-
-  function findPartition(currentPairs, usedPlayersMask) {
-    // Base case: We have enough pairs to cover all players
-    if (currentPairs.length === players.length / 2) {
-      // Calculate partnership cost
-      const partnershipCost = currentPairs.reduce((sum, p) => sum + Math.pow(p.cost, 3), 0);
-      
-      if (partnershipCost < minTotalCost) {
-        minTotalCost = partnershipCost;
-        bestSolution = [...currentPairs];
+  // ENHANCED REGULAR mode: Prioritize unplayed pairs among ACTIVE players
+  const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+  
+  // Calculate global unplayed partnership counts (for prioritization)
+  const unplayedCounts = {};
+  for (const player of shuffledPlayers) {
+    let unplayedPartners = 0;
+    for (const other of shuffledPlayers) {
+      if (player === other) continue;
+      const key = [player, other].sort().join("|");
+      if ((playedPairs[key] || 0) === 0) {
+        unplayedPartners++;
       }
-      return;
     }
-
-    // Find first unused player
-    let firstUnused = -1;
-    for(let i=0; i<players.length; i++) {
-      if (!usedPlayersMask[i]) {
-        firstUnused = i;
+    unplayedCounts[player] = unplayedPartners;
+  }
+  
+  // Build ALL possible pairs with enhanced costs
+  const allPairs = [];
+  for (let i = 0; i < shuffledPlayers.length; i++) {
+    for (let j = i + 1; j < shuffledPlayers.length; j++) {
+      const p1 = shuffledPlayers[i];
+      const p2 = shuffledPlayers[j];
+      const key = [p1, p2].sort().join("|");
+      const playCount = playedPairs[key] || 0;
+      
+      // EXPONENTIAL cost to heavily penalize repeats
+      let cost = playCount === 0 ? 0 : Math.pow(100, playCount);
+      
+      // BONUS: If both players have many unplayed partners, prioritize them
+      // This helps players who are "behind" in their partnership coverage
+      if (playCount === 0) {
+        const avgUnplayed = (unplayedCounts[p1] + unplayedCounts[p2]) / 2;
+        // Higher unplayed count = lower cost (higher priority)
+        cost = -avgUnplayed; // Negative cost = highest priority
+      }
+      
+      allPairs.push({ p1, p2, key, playCount, cost });
+    }
+  }
+  
+  // Sort by cost (negative costs come first, then 0, then exponential)
+  allPairs.sort((a, b) => {
+    if (a.cost !== b.cost) return a.cost - b.cost;
+    // If same cost, randomize to avoid bias
+    return Math.random() - 0.5;
+  });
+  
+  // Greedy selection with lookahead
+  const selectedPairs = [];
+  const usedPlayers = new Set();
+  
+  while (selectedPairs.length < shuffledPlayers.length / 2) {
+    // Find first available pair (not using already-paired players)
+    let selected = null;
+    for (const pair of allPairs) {
+      if (!usedPlayers.has(pair.p1) && !usedPlayers.has(pair.p2)) {
+        selected = pair;
         break;
       }
     }
     
-    if (firstUnused === -1) return;
-
-    const p1 = players[firstUnused];
-
-    // Try to pair p1 with every other unused player
-    for (let i = firstUnused + 1; i < players.length; i++) {
-      if (!usedPlayersMask[i]) {
-        const p2 = players[i];
-        
-        // Calculate partnership cost
-        const key = [p1, p2].sort().join("|");
-        const cost = playedPairs[key] || 0;
-        
-        // Pruning: Skip if this pair alone exceeds current best
-        if (Math.pow(cost, 3) >= minTotalCost) continue;
-
-        // Recurse
-        usedPlayersMask[firstUnused] = true;
-        usedPlayersMask[i] = true;
-        currentPairs.push({ p1, p2, cost, key });
-
-        findPartition(currentPairs, usedPlayersMask);
-        
-        // Early exit if perfect solution found
-        if (minTotalCost === 0) return;
-        
-        // Backtrack
-        currentPairs.pop();
-        usedPlayersMask[firstUnused] = false;
-        usedPlayersMask[i] = false;
-      }
+    if (!selected) {
+      console.error("Could not find available pair!");
+      break;
     }
+    
+    selectedPairs.push(selected);
+    usedPlayers.add(selected.p1);
+    usedPlayers.add(selected.p2);
+    
+    // Remove used pair from pool
+    const index = allPairs.indexOf(selected);
+    allPairs.splice(index, 1);
   }
-
-  // Find best partner pairings
-  findPartition([], new Array(players.length).fill(false));
-
-  if (!bestSolution) {
-    console.error("No solution found in backtracking!");
+  
+  if (selectedPairs.length === 0) {
+    console.error("No pairs could be formed!");
     return [];
   }
-
-  // Step 2: Group pairs into matches, minimizing opponent repetition
-  const matchCombinations = findBestMatchPairing(bestSolution, playedOpponents, false, playerStats);
+  
+  // Group pairs into matches, minimizing opponent repetition
+  const matchCombinations = findBestMatchPairing(selectedPairs, playedOpponents, false, playerStats);
   
   return matchCombinations;
 }
