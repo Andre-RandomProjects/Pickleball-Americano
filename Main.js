@@ -121,13 +121,14 @@ function generate(){
     saveTournamentData(); // Save after successful generation
   }
 
-  if(mode==="americano"){
+  if(mode==="americano" || mode==="americano-ranked"){
     if(entries.length < courts * 4) {
       showWarning(`Not enough players to fill ${courts} courts. Needed: ${courts*4}, Found: ${entries.length}.`);
       return;
     }
     if(entries.length < 4){ showWarning("At least 4 players required."); return; }
-    startAmericano(entries,courts); // progressive next round
+    const rankedMode = (mode === "americano-ranked");
+    startAmericano(entries, courts, rankedMode); // progressive next round
     saveTournamentData(); // Save after successful generation
   }
 }
@@ -304,8 +305,9 @@ function restoreFromStorage() {
         if (window.savedScores && window.savedScores.length > 0) {
           restoreScores(window.savedScores);
         }
-      } else if (mode === "americano" && entries.length >= courts * 4) {
-        startAmericano(entries,courts);
+      } else if ((mode === "americano" || mode === "americano-ranked") && entries.length >= courts * 4) {
+        const rankedMode = (mode === "americano-ranked");
+        startAmericano(entries, courts, rankedMode);
       }
     }
   }
