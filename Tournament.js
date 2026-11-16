@@ -77,29 +77,43 @@ function generateTeamRounds(teams, courts) {
     return physicalRounds;
 }
 
-function renderTeamRound(num, r, totalCourts) {
+function renderTeamRound(num, r, totalCourts, keepScore) {
+    if (keepScore === undefined) keepScore = true;
     const div = document.createElement("div");
     div.className = "round";
-    div.innerHTML = `<div class="round-header"><h3>Round ${num}</h3></div>`;
+    div.dataset.roundNum = num;
+    // One-line summary (shown when the round is collapsed) + full body
+    div.innerHTML = `<div class="round-summary">
+        <div class="rs-name">Round ${num}</div>
+        <div class="rs-games"></div>
+        <button type="button" class="rs-toggle btn-link">Open</button>
+      </div>
+      <div class="round-body">
+        <div class="round-header"><h3>Round ${num}</h3></div>
+      </div>`;
+    const body = div.querySelector(".round-body");
     const courtsDiv = document.createElement("div");
     courtsDiv.className = "courts";
 
     if (!totalCourts) totalCourts = parseInt(qs("courts").value) || r.matches.length;
-    
-    // Display matches
-    // If matches > totalCourts, what to do?
-    // Just list them. They will appear as Court 5, 6 etc. unless we cap it.
-    // But physically they don't exist.
-    // For now, let's list all matches.
-    
+
+    // Middle of a court card: score boxes, or just "v" when scores are switched off
+    const middle = (a, b, courtNo) => keepScore
+        ? `<div class="scores">
+            <input class="score-input score-box" type="number" inputmode="numeric" min="0" placeholder="0" aria-label="Court ${courtNo} score, ${escapeHtml(a)}">
+            <span class="colon">:</span>
+            <input class="score-input score-box" type="number" inputmode="numeric" min="0" placeholder="0" aria-label="Court ${courtNo} score, ${escapeHtml(b)}">
+          </div>`
+        : `<div class="versus">v</div>`;
+
     r.matches.forEach((m, i) => {
         courtsDiv.innerHTML += `
       <div class="court" data-team-a="${escapeHtml(m[0])}" data-team-b="${escapeHtml(m[1])}">
-        <div class="court-title">Court ${i + 1}</div>
-        <div class="vs">${escapeHtml(m[0])} vs ${escapeHtml(m[1])}</div>
-        <div>
-          <input class="score-input" type="number" placeholder="0"> :
-          <input class="score-input" type="number" placeholder="0">
+        <div class="court-head"><h3 class="court-title">Court ${i + 1}</h3><span class="court-status"></span></div>
+        <div class="match">
+          <div class="team team-a">${escapeHtml(m[0])}</div>
+          ${middle(m[0], m[1], i + 1)}
+          <div class="team team-b">${escapeHtml(m[1])}</div>
         </div>
       </div>`;
     });
@@ -109,23 +123,24 @@ function renderTeamRound(num, r, totalCourts) {
         const i = r.matches.length + j;
         courtsDiv.innerHTML += `
       <div class="court bonus-court" data-bonus="1" data-team-a="${escapeHtml(m[0])}" data-team-b="${escapeHtml(m[1])}">
-        <div class="court-title">Court ${i + 1} &middot; Bonus</div>
-        <div class="vs">${escapeHtml(m[0])} vs ${escapeHtml(m[1])}</div>
-        <div>
-          <input class="score-input" type="number" placeholder="0"> :
-          <input class="score-input" type="number" placeholder="0">
+        <div class="court-head"><h3 class="court-title">Court ${i + 1} &middot; Bonus</h3><span class="court-status"></span></div>
+        <div class="match">
+          <div class="team team-a">${escapeHtml(m[0])}</div>
+          ${middle(m[0], m[1], i + 1)}
+          <div class="team team-b">${escapeHtml(m[1])}</div>
         </div>
         <div class="bonus-note">Friendly rematch - not counted</div>
       </div>`;
     });
 
-    div.appendChild(courtsDiv);
+    body.appendChild(courtsDiv);
     
     if(r.sitOut.length > 0) {
         const sit = document.createElement("div");
         sit.className = "sitout";
-        sit.innerHTML = `<strong>Sit out:</strong> ${r.sitOut.map(escapeHtml).join(", ")}`;
-        div.appendChild(sit);
+        sit.innerHTML = `<span class="sitout-label">Sitting out this round</span>
+          <span class="chips">${r.sitOut.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join("")}</span>`;
+        body.appendChild(sit);
     }
     
     qs("rounds").appendChild(div);
@@ -176,7 +191,9 @@ function buildScoreboard(teams) {
             return data[y].points - data[x].points; // Most points
         });
 
-        let html = `<table><tr><th>Team</th><th>Won</th><th>Lost</th><th>Diff</th><th>Points</th></tr>`;
+        // Highlight the top three only once at least one game has been counted
+        const anyGames = teams.some(t => data[t].won + data[t].lost > 0 || data[t].points > 0);
+        let html = `<table class="board${anyGames ? " has-games" : ""}"><tr><th>Team</th><th>Won</th><th>Lost</th><th>Diff</th><th>Points</th></tr>`;
         sorted.forEach(t => {
             html += `<tr>
                 <td>${escapeHtml(t)}</td>
