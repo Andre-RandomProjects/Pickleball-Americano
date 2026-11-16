@@ -4,50 +4,137 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PickleBall Scheduler</title>
-    <link rel="stylesheet" href="styles.css?v=1.1.0">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
+    <link rel="stylesheet" href="styles.css?v=2.0.0">
 </head>
-<body onload="restoreFromStorage()">
+<body onload="initApp()">
+
+    <header class="app-bar">
+        <div class="brand">
+            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#D9F23F"/><circle cx="10" cy="11" r="2" fill="#0F3D2A"/><circle cx="18" cy="8" r="2" fill="#0F3D2A"/><circle cx="23" cy="15" r="2" fill="#0F3D2A"/><circle cx="14" cy="17" r="2" fill="#0F3D2A"/><circle cx="9" cy="21" r="2" fill="#0F3D2A"/><circle cx="19" cy="24" r="2" fill="#0F3D2A"/></svg>
+            <span class="brand-name">PickleBall Scheduler</span>
+        </div>
+        <div class="bar-actions" id="barActions" hidden>
+            <span class="bar-summary" id="barSummary"></span>
+            <button type="button" class="btn-ghost" id="editSetupBtn" onclick="toggleSetup()">Edit setup</button>
+            <button type="button" class="btn-ghost export" onclick="exportData()">Export</button>
+        </div>
+    </header>
+
     <div class="container">
-        <h2>PickleBall Scheduler</h2>
 
-        <label>Match Type</label>
-        <select id="mode" onchange="clearAll()">
-            <option value="teams">Singles / Teams</option>
-            <option value="americano">Doubles (Americano)</option>
-            <option value="americano-ranked">Doubles (Americano - Ranked)</option>
-        </select>
-
-        <label>Players / Teams (one per line)</label>
-        <textarea id="entries"></textarea>
-
-        <label>Number of courts</label>
-        <input type="number" id="courts" min="1" max="4" step="1" value="2">
-
-        <div class="button-row">
-            <button class="generate" onclick="generate()">Generate</button>
-            <button class="reset" onclick="resetAll()">Reset</button>
-            <button class="export" onclick="exportData()">Export to Excel</button>
-        </div>
-
-        <div id="warning"></div>
-
-        <!-- Tabs -->
-        <div id="teamsTabs" style="display:none;">
-            <div class="tabs">
-                <div class="tab active" onclick="switchTab('rounds')">Rounds</div>
-                <div class="tab" onclick="switchTab('score')">Scoreboard</div>
+        <!-- Setup -->
+        <section id="setupPanel" class="setup">
+            <div class="setup-head">
+                <h1 id="setupTitle">New tournament</h1>
+                <p>Pick a format, add your players, and choose how many courts you have.</p>
             </div>
-            <div id="rounds" class="tab-content active"></div>
-            <div id="score" class="tab-content"></div>
-        </div>
 
-        <!-- Americano Output -->
-        <div id="americanoOutput"></div>
+            <!-- Kept as the single source of truth for the match type; the cards below drive it -->
+            <select id="mode" hidden onchange="syncSetupUI()">
+                <option value="teams">Singles / Teams</option>
+                <option value="americano">Doubles (Americano)</option>
+                <option value="americano-ranked">Doubles (Americano - Ranked)</option>
+            </select>
+
+            <fieldset class="mode-cards">
+                <legend>Match type</legend>
+                <div class="mode-grid">
+                    <button type="button" class="mode-card" data-mode="teams" aria-pressed="true" onclick="pickMode('teams')">
+                        <span class="mode-name">Singles / Teams</span>
+                        <span class="mode-desc">Every team plays every other team once.</span>
+                    </button>
+                    <button type="button" class="mode-card" data-mode="americano" aria-pressed="false" onclick="pickMode('americano')">
+                        <span class="mode-name">Doubles Americano</span>
+                        <span class="mode-desc">New partner every round, mixed as widely as possible.</span>
+                    </button>
+                    <button type="button" class="mode-card" data-mode="americano-ranked" aria-pressed="false" onclick="pickMode('americano-ranked')">
+                        <span class="mode-name">Americano, ranked</span>
+                        <span class="mode-desc">Scores set ratings, so games get closer each round.</span>
+                    </button>
+                </div>
+            </fieldset>
+
+            <div class="setup-grid">
+                <div class="players-col">
+                    <div class="label-row">
+                        <label for="entries" id="entriesLabel">Players / Teams (one per line)</label>
+                        <span class="entry-count" id="entryCount"></span>
+                    </div>
+                    <textarea id="entries" oninput="syncSetupUI()" autocomplete="off" spellcheck="false"></textarea>
+                </div>
+
+                <div class="side-col">
+                    <fieldset class="court-picker">
+                        <legend>Number of courts</legend>
+                        <div class="court-buttons">
+                            <button type="button" class="court-btn" data-courts="1" aria-pressed="false" onclick="pickCourts(1)">1</button>
+                            <button type="button" class="court-btn" data-courts="2" aria-pressed="true" onclick="pickCourts(2)">2</button>
+                            <button type="button" class="court-btn" data-courts="3" aria-pressed="false" onclick="pickCourts(3)">3</button>
+                            <button type="button" class="court-btn" data-courts="4" aria-pressed="false" onclick="pickCourts(4)">4</button>
+                        </div>
+                        <input type="number" id="courts" min="1" max="4" step="1" value="2" hidden>
+                    </fieldset>
+
+                    <!-- Singles / Teams only: switch off for social play (order of play only, no scores) -->
+                    <label class="switch-row" id="keepScoreRow" for="keepScore">
+                        <span class="switch-text">
+                            <span class="switch-title">Keep score</span>
+                            <span class="switch-desc" id="keepScoreDesc">Score boxes and a scoreboard.</span>
+                        </span>
+                        <input type="checkbox" id="keepScore" class="switch-input" checked onchange="syncSetupUI()">
+                        <span class="switch-track" aria-hidden="true"></span>
+                    </label>
+
+                    <section class="each-round" id="eachRound" aria-live="polite"></section>
+
+                    <div id="warning" role="alert"></div>
+
+                    <div class="setup-actions">
+                        <button type="button" class="generate btn-primary" id="startBtn" onclick="generate()">Start tournament</button>
+                        <button type="button" class="btn-secondary" id="backBtn" onclick="toggleSetup()" hidden>Back to tournament</button>
+                        <button type="button" class="reset btn-link" onclick="resetAll()">Clear everything</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tournament in play -->
+        <div id="playPanel" hidden>
+            <nav class="view-tabs" id="viewTabs" aria-label="View" hidden>
+                <button type="button" class="view-tab" data-view="rounds" aria-pressed="true" onclick="switchView('rounds')">Rounds</button>
+                <button type="button" class="view-tab" data-view="side" id="sideTabBtn" aria-pressed="false" onclick="switchView('side')">Scoreboard</button>
+            </nav>
+
+            <div class="play-layout">
+                <main class="play-main">
+                    <!-- Singles / Teams rounds -->
+                    <div id="teamsTabs" style="display:none;">
+                        <div id="rounds" class="round-flow"></div>
+                    </div>
+                    <!-- Americano rounds -->
+                    <div id="americanoOutput" class="round-flow"></div>
+                </main>
+
+                <aside class="play-side" id="playSide" hidden>
+                    <div class="side-head">
+                        <h2 id="sideTitle">Scoreboard</h2>
+                        <span class="side-note" id="sideNote"></span>
+                    </div>
+                    <div id="score"></div>
+                    <div id="americanoRankings"></div>
+                    <p class="side-foot" id="sideFoot"></p>
+                </aside>
+            </div>
+        </div>
     </div>
 
     <!-- Scripts -->
-    <script src="Main.js?v=1.2.0"></script>
-    <script src="Tournament.js?v=1.2.0"></script>
-    <script src="Americano.js?v=1.2.0"></script>
+    <script src="Main.js?v=2.0.0"></script>
+    <script src="Tournament.js?v=2.0.0"></script>
+    <script src="Americano.js?v=2.0.0"></script>
+    <script src="Ui.js?v=2.0.0"></script>
 </body>
 </html>
