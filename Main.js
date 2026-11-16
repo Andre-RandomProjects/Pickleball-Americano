@@ -1,5 +1,38 @@
 function qs(id){ return document.getElementById(id); }
 
+// Make user-typed names safe to put into HTML
+function escapeHtml(str){
+  return String(str)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+// Read the courts box; returns an integer 1-4 or null if invalid
+function readCourts(){
+  const c = Number(qs("courts").value);
+  return (Number.isInteger(c) && c >= 1 && c <= 4) ? c : null;
+}
+
+// RULE: every selected court must be used in every round.
+// Returns a warning message if there are not enough entries to fill them, else "".
+function notEnoughForCourts(mode, count, courts){
+  const perCourt = mode === "teams" ? 2 : 4;
+  const needed = courts * perCourt;
+  if (count >= needed) return "";
+  const what = mode === "teams" ? "teams" : "players";
+  return `Not enough ${what} to use all ${courts} court(s). Needed: at least ${needed}, Found: ${count}. Add ${what} or lower the number of courts.`;
+}
+
+// Names that appear more than once (case-insensitive)
+function findDuplicates(entries){
+  const seen = new Map(), dups = new Set();
+  entries.forEach(e => {
+    const k = e.toLowerCase();
+    if (seen.has(k)) dups.add(seen.get(k)); else seen.set(k, e);
+  });
+  return [...dups];
+}
+
 function showWarning(msg){
   const w = qs("warning");
   if(!w) return;
@@ -28,22 +61,52 @@ function saveTournamentData() {
   // Save scores for Teams mode
   if (qs("mode").value === "teams") {
     const scores = [];
-    document.querySelectorAll(".court").forEach(c => {
-      const vs = c.querySelector(".vs");
+    document.querySelectorAll("#rounds .court").forEach(c => {
       const inputs = c.querySelectorAll(".score-input");
-      if (vs && inputs.length === 2 && vs.textContent !== "Unused") {
-        const parts = vs.textContent.split(" vs ");
-        if (parts.length === 2) {
-          scores.push({
-            team1: parts[0],
-            team2: parts[1],
-            score1: inputs[0].value,
-            score2: inputs[1].value
-          });
-        }
+      if (inputs.length === 2 && c.dataset.teamA !== undefined) {
+        scores.push({
+          bonus: !!c.dataset.bonus,
+          team1: c.dataset.teamA,
+          team2: c.dataset.teamB,
+          score1: inputs[0].value,
+          score2: inputs[1].value
+        });
       }
     });
     data.scores = scores;
+  }
+
+  // Save schedule + scores for Americano modes so a refresh reproduces them
+  if ((qs("mode").value === "americano" || qs("mode").value === "americano-ranked")
+      && typeof americanoState !== "undefined"
+      && americanoState.players && americanoState.players.length) {
+
+    const americanoScores = [];
+    document.querySelectorAll("#americanoOutput .round").forEach(roundDiv => {
+      const roundNum = parseInt(roundDiv.dataset.roundNum);
+      roundDiv.querySelectorAll(".court").forEach((courtDiv, courtIdx) => {
+        const inputs = courtDiv.querySelectorAll(".americano-score-input");
+        if (inputs.length === 2 && (inputs[0].value !== "" || inputs[1].value !== "")) {
+          americanoScores.push({
+            round: roundNum,
+            court: courtIdx,
+            a: inputs[0].value,
+            b: inputs[1].value
+          });
+        }
+      });
+    });
+
+    data.americano = {
+      players: americanoState.players,
+      playedPairs: americanoState.playedPairs,
+      playedOpponents: americanoState.playedOpponents,
+      sitQueue: americanoState.sitQueue,
+      roundCounter: americanoState.roundCounter,
+      rankedMode: americanoState.rankedMode,
+      rounds: americanoState.rounds,
+      scores: americanoScores
+    };
   }
   
   localStorage.setItem('pickleballTournament', JSON.stringify(data));
@@ -62,6 +125,9 @@ function loadTournamentData() {
       if (data.scores) {
         window.savedScores = data.scores;
       }
+
+      // Store Americano schedule/state for later restoration
+      window.savedAmericano = data.americano || null;
       
       return true;
     } catch (e) {
@@ -106,27 +172,31 @@ function generate(){
   hideWarning();
   const mode = qs("mode").value;
   const entries = qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
-  const courts = parseInt(qs("courts").value);
+  const courts = readCourts();
+
+  if(courts === null){
+    showWarning("Number of courts must be a whole number from 1 to 4.");
+    return;
+  }
+  const dups = findDuplicates(entries);
+  if(dups.length){
+    showWarning(`Each name must be unique. Duplicated: ${dups.join(", ")}.`);
+    return;
+  }
 
   if(mode==="teams"){
-    if(entries.length < courts * 2) {
-      showWarning(`Not enough teams to fill ${courts} courts. Needed: ${courts*2}, Found: ${entries.length}.`);
-      return;
-    }
-    if(entries.length<2){ showWarning("At least 2 teams required."); return; }
+    const short = notEnoughForCourts(mode, entries.length, courts);
+    if(short){ showWarning(short); return; }
     qs("teamsTabs").style.display="block";
     const rounds = generateTeamRounds(entries,courts);
-    rounds.forEach((r,i)=>renderTeamRound(i+1,r));
+    rounds.forEach((r,i)=>renderTeamRound(i+1,r,courts));
     buildScoreboard(entries);
     saveTournamentData(); // Save after successful generation
   }
 
   if(mode==="americano" || mode==="americano-ranked"){
-    if(entries.length < courts * 4) {
-      showWarning(`Not enough players to fill ${courts} courts. Needed: ${courts*4}, Found: ${entries.length}.`);
-      return;
-    }
-    if(entries.length < 4){ showWarning("At least 4 players required."); return; }
+    const short = notEnoughForCourts(mode, entries.length, courts);
+    if(short){ showWarning(short); return; }
     const rankedMode = (mode === "americano-ranked");
     startAmericano(entries, courts, rankedMode); // progressive next round
     saveTournamentData(); // Save after successful generation
@@ -182,22 +252,18 @@ function exportTeamsData(teams, courts) {
   csvContent += "ROUNDS & SCORES\n";
   csvContent += "Round;Court;Team 1;Score 1;Team 2;Score 2\n";
 
-  const rounds = document.querySelectorAll(".round");
+  const rounds = document.querySelectorAll("#rounds .round");
   rounds.forEach((round, roundIndex) => {
     const roundNum = roundIndex + 1;
     const courts = round.querySelectorAll(".court");
 
     courts.forEach((court, courtIndex) => {
-      const vs = court.querySelector(".vs");
       const inputs = court.querySelectorAll(".score-input");
-
-      if (vs && vs.textContent !== "Unused" && inputs.length === 2) {
-        const parts = vs.textContent.split(" vs ");
-        if (parts.length === 2) {
-          const score1 = inputs[0].value || "0";
-          const score2 = inputs[1].value || "0";
-          csvContent += `${roundNum};Court ${courtIndex + 1};"${parts[0]}";${score1};"${parts[1]}";${score2}\n`;
-        }
+      if (court.dataset.teamA !== undefined && inputs.length === 2) {
+        const score1 = inputs[0].value || "0";
+        const score2 = inputs[1].value || "0";
+        const label = court.dataset.bonus ? `Court ${courtIndex + 1} (Bonus - not counted)` : `Court ${courtIndex + 1}`;
+        csvContent += `${roundNum};${label};${csvCell(court.dataset.teamA)};${score1};${csvCell(court.dataset.teamB)};${score2}\n`;
       }
     });
   });
@@ -206,47 +272,67 @@ function exportTeamsData(teams, courts) {
 }
 
 function exportAmericanoData(players, courts) {
+  // Built from the stored schedule (americanoState.rounds), not from page markup
+  if (typeof americanoState === "undefined" || !americanoState.rounds || !americanoState.rounds.length) {
+    alert("Generate a schedule first.");
+    return;
+  }
+  const ranked = !!americanoState.rankedMode;
   let csvContent = "data:text/csv;charset=utf-8,";
 
   // Header
   csvContent += "Pickleball Tournament Export\n\n";
-  csvContent += `Mode;"Doubles (Americano)"\n`;
-  csvContent += `Players;"${players.join(", ")}"\n`;
-  csvContent += `Courts;"${courts}"\n`;
+  csvContent += `Mode;${csvCell(ranked ? "Doubles (Americano - Ranked)" : "Doubles (Americano)")}\n`;
+  csvContent += `Players;${csvCell(americanoState.players.join(", "))}\n`;
+  csvContent += `Courts;"${americanoState.courts}"\n`;
   csvContent += `Date;"${new Date().toLocaleDateString()}"\n\n`;
+
+  // Rankings (ranked mode)
+  if (ranked) {
+    csvContent += "RANKINGS\n";
+    csvContent += "Rank;Player;Rating;Games;Won;Lost;Points For;Points Against;Diff\n";
+    [...americanoState.players]
+      .sort((a, b) => americanoState.playerStats[b].rating - americanoState.playerStats[a].rating)
+      .forEach((p, i) => {
+        const s = americanoState.playerStats[p];
+        csvContent += `${i + 1};${csvCell(p)};${Math.round(s.rating)};${s.gamesPlayed};${s.gamesWon};${s.gamesLost};${s.pointsFor};${s.pointsAgainst};${s.pointDiff}\n`;
+      });
+    csvContent += "\n";
+  }
 
   // Rounds section
   csvContent += "ROUNDS\n";
-  csvContent += "Round;Court;Player 1;Player 2;vs;Player 3;Player 4;Sitting Out\n";
+  csvContent += ranked
+    ? "Round;Court;Player 1;Player 2;Score;vs;Score;Player 3;Player 4;Sitting Out\n"
+    : "Round;Court;Player 1;Player 2;vs;Player 3;Player 4;Sitting Out\n";
 
-  const americanoOutput = document.querySelector("#americanoOutput");
-  if (americanoOutput) {
-    const rounds = americanoOutput.querySelectorAll(".round");
-    rounds.forEach((round, roundIndex) => {
-      const roundNum = roundIndex + 1;
-      const courts = round.querySelectorAll(".court");
-      const sitoutDiv = round.querySelector(".sitout");
-      const sittingOut = sitoutDiv ? sitoutDiv.textContent.replace("Sitting out: ", "").trim() : "";
-
-      courts.forEach((court, courtIndex) => {
-        const courtTitle = court.querySelector(".court-title").textContent;
-        const team1 = court.querySelectorAll(".team")[0];
-        const team2 = court.querySelectorAll(".team")[1];
-        const p1 = team1.querySelectorAll(".player")[0].textContent;
-        const p2 = team1.querySelectorAll(".player")[1].textContent;
-        const p3 = team2.querySelectorAll(".player")[0].textContent;
-        const p4 = team2.querySelectorAll(".player")[1].textContent;
-
-        csvContent += `${roundNum};${courtTitle};"${p1}";"${p2}";vs;"${p3}";"${p4}";"${sittingOut}"\n`;
-      });
+  const roundDivs = qs("americanoOutput") ? qs("americanoOutput").querySelectorAll(".round") : [];
+  americanoState.rounds.forEach((r, ri) => {
+    const sittingOut = csvCell(r.sit.join(", "));
+    const courtDivs = roundDivs[ri] ? roundDivs[ri].querySelectorAll(".court") : [];
+    r.matches.forEach((m, ci) => {
+      if (ranked) {
+        const ins = courtDivs[ci] ? courtDivs[ci].querySelectorAll(".americano-score-input") : [];
+        const sa = ins[0] ? ins[0].value : "", sb = ins[1] ? ins[1].value : "";
+        csvContent += `${ri + 1};Court ${ci + 1};${csvCell(m.A[0])};${csvCell(m.A[1])};${sa};vs;${sb};${csvCell(m.B[0])};${csvCell(m.B[1])};${sittingOut}\n`;
+      } else {
+        csvContent += `${ri + 1};Court ${ci + 1};${csvCell(m.A[0])};${csvCell(m.A[1])};vs;${csvCell(m.B[0])};${csvCell(m.B[1])};${sittingOut}\n`;
+      }
     });
-  }
+  });
 
-  downloadCSV(csvContent, "americano_export.csv");
+  downloadCSV(csvContent, ranked ? "americano_ranked_export.csv" : "americano_export.csv");
+}
+
+// Quote a CSV cell (handles quotes inside names)
+function csvCell(v) {
+  return `"${String(v).replace(/"/g, '""')}"`;
 }
 
 function downloadCSV(csvContent, filename) {
-  const encodedUri = encodeURI(csvContent);
+  const prefix = "data:text/csv;charset=utf-8,";
+  const body = csvContent.startsWith(prefix) ? csvContent.slice(prefix.length) : csvContent;
+  const encodedUri = prefix + encodeURIComponent("\uFEFF" + body); // BOM so Excel reads accents correctly
   const link = document.createElement("a");
   link.setAttribute("href", encodedUri);
   link.setAttribute("download", filename);
@@ -257,25 +343,22 @@ function downloadCSV(csvContent, filename) {
 
 // Function to restore scores from saved data
 function restoreScores(savedScores) {
-  document.querySelectorAll(".court").forEach(c => {
-    const vs = c.querySelector(".vs");
+  document.querySelectorAll("#rounds .court").forEach(c => {
     const inputs = c.querySelectorAll(".score-input");
-    if (vs && inputs.length === 2 && vs.textContent !== "Unused") {
-      const parts = vs.textContent.split(" vs ");
-      if (parts.length === 2) {
-        const team1 = parts[0];
-        const team2 = parts[1];
-        
-        // Find matching saved score
-        const savedScore = savedScores.find(s => 
-          (s.team1 === team1 && s.team2 === team2) || 
-          (s.team1 === team2 && s.team2 === team1)
-        );
-        
-        if (savedScore) {
-          inputs[0].value = savedScore.score1;
-          inputs[1].value = savedScore.score2;
-        }
+    if (inputs.length === 2 && c.dataset.teamA !== undefined) {
+      const team1 = c.dataset.teamA;
+      const team2 = c.dataset.teamB;
+      const isBonus = !!c.dataset.bonus;
+      const same = s => !!s.bonus === isBonus;
+      const savedScore = savedScores.find(s => same(s) && s.team1 === team1 && s.team2 === team2);
+      const swapped = !savedScore && savedScores.find(s => same(s) && s.team1 === team2 && s.team2 === team1);
+      if (savedScore) {
+        inputs[0].value = savedScore.score1;
+        inputs[1].value = savedScore.score2;
+      } else if (swapped) {
+        // Scores were saved the other way round - put each score with its own team
+        inputs[0].value = swapped.score2;
+        inputs[1].value = swapped.score1;
       }
     }
   });
@@ -292,22 +375,28 @@ function restoreFromStorage() {
     hideWarning();
     const mode = qs("mode").value;
     const entries = qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
-    const courts = parseInt(qs("courts").value);
+    const courts = readCourts();
     
-    if (entries.length > 0) {
-      if (mode === "teams" && entries.length >= courts * 2) {
+    if (entries.length > 0 && courts !== null && findDuplicates(entries).length === 0) {
+      if (mode === "teams" && !notEnoughForCourts(mode, entries.length, courts)) {
         qs("teamsTabs").style.display="block";
         const rounds = generateTeamRounds(entries,courts);
-        rounds.forEach((r,i)=>renderTeamRound(i+1,r));
+        rounds.forEach((r,i)=>renderTeamRound(i+1,r,courts));
         buildScoreboard(entries);
         
         // Restore scores if available
         if (window.savedScores && window.savedScores.length > 0) {
           restoreScores(window.savedScores);
         }
-      } else if ((mode === "americano" || mode === "americano-ranked") && entries.length >= courts * 4) {
+      } else if ((mode === "americano" || mode === "americano-ranked") && !notEnoughForCourts(mode, entries.length, courts)) {
         const rankedMode = (mode === "americano-ranked");
-        startAmericano(entries, courts, rankedMode);
+        // If we have a saved schedule, reproduce it exactly (and restore scores);
+        // otherwise generate a fresh tournament.
+        if (window.savedAmericano && Array.isArray(window.savedAmericano.rounds) && window.savedAmericano.rounds.length > 0) {
+          restoreAmericano(window.savedAmericano, courts);
+        } else {
+          startAmericano(entries, courts, rankedMode);
+        }
       }
     }
   }
