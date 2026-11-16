@@ -7,13 +7,22 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
-    <link rel="stylesheet" href="styles.css?v=2.0.0">
+    <link rel="stylesheet" href="styles.css?v=2.1.0">
+    <script>
+        // Apply the saved colour theme straight away, so the page doesn't flash green first
+        (function(){
+            var t = null, m = document.cookie.match(/(?:^|;\s*)pbTheme=([a-z]+)/);
+            if (m) t = m[1];
+            if (!t) { try { t = localStorage.getItem("pickleballTheme"); } catch (e) {} }
+            if (t && /^(green|blue|clay|berry|night)$/.test(t) && t !== "green") document.documentElement.setAttribute("data-theme", t);
+        })();
+    </script>
 </head>
 <body onload="initApp()">
 
     <header class="app-bar">
         <div class="brand">
-            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#D9F23F"/><circle cx="10" cy="11" r="2" fill="#0F3D2A"/><circle cx="18" cy="8" r="2" fill="#0F3D2A"/><circle cx="23" cy="15" r="2" fill="#0F3D2A"/><circle cx="14" cy="17" r="2" fill="#0F3D2A"/><circle cx="9" cy="21" r="2" fill="#0F3D2A"/><circle cx="19" cy="24" r="2" fill="#0F3D2A"/></svg>
+            <svg aria-hidden="true" width="32" height="32" viewBox="0 0 32 32"><circle class="logo-ball" cx="16" cy="16" r="15" fill="#D9F23F"/><g class="logo-hole" fill="#0F3D2A"><circle cx="10" cy="11" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="23" cy="15" r="2"/><circle cx="14" cy="17" r="2"/><circle cx="9" cy="21" r="2"/><circle cx="19" cy="24" r="2"/></g></svg>
             <span class="brand-name">PickleBall Scheduler</span>
         </div>
         <div class="bar-actions" id="barActions" hidden>
@@ -21,6 +30,17 @@
             <button type="button" class="btn-ghost" id="editSetupBtn" onclick="toggleSetup()">Edit setup</button>
             <button type="button" class="btn-ghost export" onclick="exportData()">Export</button>
         </div>
+        <details class="theme-menu" id="themeMenu">
+            <summary class="btn-ghost"><span class="theme-dot" aria-hidden="true"></span>Theme</summary>
+            <div class="theme-pop">
+                <div class="theme-pop-title">Colour theme</div>
+                <button type="button" class="theme-option" data-theme-name="green" aria-pressed="true" onclick="setTheme('green')"><span class="swatch" style="--sw-main:#0F3D2A;--sw-accent:#D9F23F"></span>Court green</button>
+                <button type="button" class="theme-option" data-theme-name="blue" aria-pressed="false" onclick="setTheme('blue')"><span class="swatch" style="--sw-main:#0B3A66;--sw-accent:#FFD24A"></span>Ocean blue</button>
+                <button type="button" class="theme-option" data-theme-name="clay" aria-pressed="false" onclick="setTheme('clay')"><span class="swatch" style="--sw-main:#7A2E12;--sw-accent:#FFC857"></span>Clay court</button>
+                <button type="button" class="theme-option" data-theme-name="berry" aria-pressed="false" onclick="setTheme('berry')"><span class="swatch" style="--sw-main:#3B1A66;--sw-accent:#7CF0C8"></span>Berry</button>
+                <button type="button" class="theme-option" data-theme-name="night" aria-pressed="false" onclick="setTheme('night')"><span class="swatch" style="--sw-main:#101614;--sw-accent:#D9F23F"></span>Night</button>
+            </div>
+        </details>
     </header>
 
     <div class="container">
@@ -132,9 +152,9 @@
     </div>
 
     <!-- Scripts -->
-    <script src="Main.js?v=2.0.0"></script>
-    <script src="Tournament.js?v=2.0.0"></script>
-    <script src="Americano.js?v=2.0.0"></script>
-    <script src="Ui.js?v=2.0.0"></script>
+    <script src="Main.js?v=2.1.0"></script>
+    <script src="Tournament.js?v=2.1.0"></script>
+    <script src="Americano.js?v=2.1.0"></script>
+    <script src="Ui.js?v=2.1.0"></script>
 </body>
 </html>

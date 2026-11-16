@@ -362,6 +362,43 @@ function switchView(view){
     t.setAttribute("aria-pressed", String(t.dataset.view === view)));
 }
 
+/* ---------- Colour theme ---------- */
+
+const THEMES = ["green", "blue", "clay", "berry", "night"];
+
+// The saved theme: cookie first, browser storage as a fallback (cookies don't work on file://)
+function savedTheme(){
+  const m = document.cookie.match(/(?:^|;\s*)pbTheme=([a-z]+)/);
+  let t = m ? m[1] : null;
+  if (!t) { try { t = localStorage.getItem("pickleballTheme"); } catch (e) {} }
+  return THEMES.includes(t) ? t : "green";
+}
+
+// Switch theme and remember it for a year. "Clear everything" does not reset it.
+function setTheme(name, remember = true){
+  if (!THEMES.includes(name)) name = "green";
+  if (name === "green") document.documentElement.removeAttribute("data-theme");
+  else document.documentElement.setAttribute("data-theme", name);
+  document.querySelectorAll(".theme-option").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.themeName === name)));
+  if (remember) {
+    document.cookie = `pbTheme=${name}; max-age=31536000; path=/; SameSite=Lax`;
+    try { localStorage.setItem("pickleballTheme", name); } catch (e) {}
+    const menu = qs("themeMenu");
+    if (menu) menu.open = false;
+  }
+}
+
+// Close the theme menu when clicking elsewhere or pressing Escape
+document.addEventListener("click", e => {
+  const menu = qs("themeMenu");
+  if (menu && menu.open && !menu.contains(e.target)) menu.open = false;
+});
+document.addEventListener("keydown", e => {
+  const menu = qs("themeMenu");
+  if (e.key === "Escape" && menu && menu.open) { menu.open = false; menu.querySelector("summary").focus(); }
+});
+
 /* ---------- Events ---------- */
 
 // Open / close a collapsed round
@@ -380,6 +417,7 @@ document.addEventListener("input", e => {
 
 // Page load
 function initApp(){
+  setTheme(savedTheme(), false);
   restoreFromStorage();
   setupOpen = !hasTournament();
   refreshPlayView();
