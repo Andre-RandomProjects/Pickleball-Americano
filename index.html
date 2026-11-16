@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap">
-    <link rel="stylesheet" href="styles.css?v=2.1.0">
+    <link rel="stylesheet" href="styles.css?v=2.2.0">
     <script>
         // Apply the saved colour theme straight away, so the page doesn't flash green first
         (function(){
@@ -57,6 +57,7 @@
                 <option value="teams">Singles / Teams</option>
                 <option value="americano">Doubles (Americano)</option>
                 <option value="americano-ranked">Doubles (Americano - Ranked)</option>
+                <option value="tournament">Tournament (groups then knockout)</option>
             </select>
 
             <fieldset class="mode-cards">
@@ -73,6 +74,10 @@
                     <button type="button" class="mode-card" data-mode="americano-ranked" aria-pressed="false" onclick="pickMode('americano-ranked')">
                         <span class="mode-name">Americano, ranked</span>
                         <span class="mode-desc">Scores set ratings, so games get closer each round.</span>
+                    </button>
+                    <button type="button" class="mode-card" data-mode="tournament" aria-pressed="false" onclick="pickMode('tournament')">
+                        <span class="mode-name">Tournament</span>
+                        <span class="mode-desc">Groups first, then a knockout to the final.</span>
                     </button>
                 </div>
             </fieldset>
@@ -112,6 +117,11 @@
 
                     <div id="warning" role="alert"></div>
 
+                    <div class="name-field">
+                        <label for="tournamentName">Name <span class="optional">(optional)</span></label>
+                        <input type="text" id="tournamentName" maxlength="60" autocomplete="off" placeholder="e.g. Saturday Social">
+                    </div>
+
                     <div class="setup-actions">
                         <button type="button" class="generate btn-primary" id="startBtn" onclick="generate()">Start tournament</button>
                         <button type="button" class="btn-secondary" id="backBtn" onclick="toggleSetup()" hidden>Back to tournament</button>
@@ -136,6 +146,8 @@
                     </div>
                     <!-- Americano rounds -->
                     <div id="americanoOutput" class="round-flow"></div>
+                    <!-- Tournament (groups then knockout) rounds -->
+                    <div id="tournamentOutput" class="round-flow tournament-flow"></div>
                 </main>
 
                 <aside class="play-side" id="playSide" hidden>
@@ -145,6 +157,7 @@
                     </div>
                     <div id="score"></div>
                     <div id="americanoRankings"></div>
+                    <div id="tournamentSide"></div>
                     <p class="side-foot" id="sideFoot"></p>
                 </aside>
             </div>
@@ -152,9 +165,10 @@
     </div>
 
     <!-- Scripts -->
-    <script src="Main.js?v=2.1.0"></script>
-    <script src="Tournament.js?v=2.1.0"></script>
-    <script src="Americano.js?v=2.1.0"></script>
-    <script src="Ui.js?v=2.1.0"></script>
+    <script src="Main.js?v=2.2.0"></script>
+    <script src="Tournament.js?v=2.2.0"></script>
+    <script src="Americano.js?v=2.2.0"></script>
+    <script src="TournamentMode.js?v=2.2.0"></script>
+    <script src="Ui.js?v=2.2.0"></script>
 </body>
 </html>

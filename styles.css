@@ -1,4 +1,4 @@
-/* PickleBall Scheduler (v2.1.0) - colours come from the theme variables below */
+/* PickleBall Scheduler (v2.2.0) - colours come from the theme variables below */
 
 :root {
     /* Court green (default) */
@@ -236,7 +236,7 @@ legend, .label-row label {
 
 legend { margin-bottom: 10px; }
 
-.mode-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.mode-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 
 .mode-card {
     text-align: left;
@@ -355,6 +355,24 @@ textarea {
 .each-round .stat-label { font-size: 14px; color: var(--ink-mid); }
 .each-round .hint { margin: 0; font-size: 15px; color: var(--ink-mid); }
 
+.each-round .plan-rule { margin-top: 10px; font-size: 14px; }
+
+/* Optional tournament name */
+.name-field { display: flex; flex-direction: column; gap: 8px; }
+.name-field label { font-weight: 700; font-size: 15px; }
+.name-field .optional { font-weight: 500; color: var(--ink-soft); }
+
+.name-field input {
+    width: 100%;
+    height: 48px;
+    padding: 0 14px;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    background: var(--card);
+    color: var(--ink);
+    font: 500 16px var(--body);
+}
+
 .setup-actions { display: flex; flex-direction: column; gap: 8px; }
 .setup-actions .btn-primary { min-height: 56px; font-size: 18px; }
 .setup-actions .btn-link { color: var(--ink-soft); }
@@ -452,6 +470,44 @@ textarea {
 
 .next-wrap { display: flex; align-items: center; gap: 12px; }
 .next-note { font-size: 14px; color: var(--ink-soft); }
+
+/* Tournament: round names are longer than "Round 4" */
+.play-head.long-title .round-title { font-size: 34px; }
+.tournament-flow .rs-name { width: 150px; }
+
+.court-tag {
+    margin-left: 6px;
+    font-family: var(--body);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink-soft);
+}
+
+.team.tbd, .tbd { font-weight: 500; font-style: italic; color: var(--ink-soft); }
+input.score-box:disabled { background: var(--tint); border-style: dashed; opacity: .8; }
+.next-round-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Tournament side panel: podium, knockout results, group tables */
+.side-sub { margin: 18px 0 8px; font-family: var(--display); font-size: 16px; font-weight: 600; }
+.side-sub:first-child { margin-top: 0; }
+
+.podium { border: 2px solid var(--court); border-radius: 12px; padding: 6px 12px; margin-bottom: 18px; }
+.podium-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 8px 0; }
+.podium-row + .podium-row { border-top: 1px solid var(--line); }
+.podium-place { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); white-space: nowrap; }
+.podium-name { font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.podium-row.first .podium-name { font-family: var(--display); font-size: 20px; font-weight: 700; }
+
+.ko-round { margin-bottom: 12px; }
+.ko-round-name { font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 4px; }
+.ko-line { font-size: 15px; padding: 5px 0; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.ko-tag { color: var(--ink-soft); }
+.reopen-btn { padding: 0; }
+
+table.board.group tr.q td { background: var(--ball-soft); }
+table.board.group tr.q td:first-child { font-weight: 700; border-radius: 8px 0 0 8px; }
+table.board.group tr.q td:last-child { border-radius: 0 8px 8px 0; }
+table.board.group th:first-child { text-transform: none; letter-spacing: 0; font-weight: 500; }
 
 .flow-heading {
     margin: 18px 0 2px;
@@ -613,6 +669,7 @@ table.board.has-games tr:nth-child(-n+4) td:last-child { border-radius: 0 8px 8p
 /* ---------- Narrow screens ---------- */
 
 @media (max-width: 900px) {
+    .mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .view-tabs:not([hidden]) { display: grid; }
     body.has-side .play-side { display: none; }
     body.has-side.view-side .play-side { display: block; }
@@ -637,6 +694,8 @@ table.board.has-games tr:nth-child(-n+4) td:last-child { border-radius: 0 8px 8p
     textarea { height: 220px; }
 
     .round-title { font-size: 34px; }
+    .play-head.long-title .round-title { font-size: 26px; }
+    .tournament-flow .rs-name { width: auto; flex-basis: 100%; }
     .round-title .of { font-size: 17px; }
     .progress-wrap { min-width: 0; flex: 1 1 100%; }
     .progress-text { text-align: left; }

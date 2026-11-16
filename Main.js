@@ -16,10 +16,14 @@ function readCourts(){
 // RULE: every selected court must be used in every round.
 // Returns a warning message if there are not enough entries to fill them, else "".
 function notEnoughForCourts(mode, count, courts){
-  const perCourt = mode === "teams" ? 2 : 4;
+  const perCourt = (mode === "teams" || mode === "tournament") ? 2 : 4;
+  // A tournament (groups then knockout) needs at least two groups of three
+  if (mode === "tournament" && count < 6) {
+    return `A tournament needs at least 6 players or teams. Found: ${count}.`;
+  }
   const needed = courts * perCourt;
   if (count >= needed) return "";
-  const what = mode === "teams" ? "teams" : "players";
+  const what = mode === "teams" ? "teams" : mode === "tournament" ? "players or teams" : "players";
   return `Not enough ${what} to use all ${courts} court(s). Needed: at least ${needed}, Found: ${count}. Add ${what} or lower the number of courts.`;
 }
 
@@ -59,6 +63,7 @@ function saveTournamentData() {
     entries: active ? active.entries : qs("entries").value,
     courts: active ? active.courts : qs("courts").value,
     keepScore: active ? active.keepScore : (qs("keepScore") ? qs("keepScore").checked : true),
+    name: active ? (active.name || "") : (qs("tournamentName") ? qs("tournamentName").value.trim() : ""),
     timestamp: new Date().toISOString()
   };
   const mode = data.mode;
@@ -115,6 +120,11 @@ function saveTournamentData() {
     };
   }
   
+  // Tournament mode (groups then knockout): the whole state, scores included
+  if (mode === "tournament" && typeof tournamentState !== "undefined" && tournamentState) {
+    data.tournament = tournamentState;
+  }
+
   localStorage.setItem('pickleballTournament', JSON.stringify(data));
 }
 
@@ -127,6 +137,8 @@ function loadTournamentData() {
       qs("entries").value = data.entries || '';
       qs("courts").value = data.courts || 2;
       if (qs("keepScore")) qs("keepScore").checked = data.keepScore !== false;
+      if (qs("tournamentName")) qs("tournamentName").value = data.name || "";
+      window.savedTournament = data.tournament || null;
       window.savedTeamsCurrent = (typeof data.teamsCurrent === "number") ? data.teamsCurrent : null;
       
       // Store scores data for later restoration
@@ -158,6 +170,9 @@ function clearAll(){
   if(qs("score")) qs("score").innerHTML="";
   if(qs("americanoOutput")) qs("americanoOutput").innerHTML="";
   if(qs("americanoRankings")) qs("americanoRankings").innerHTML="";
+  if(qs("tournamentOutput")) qs("tournamentOutput").innerHTML="";
+  if(qs("tournamentSide")) qs("tournamentSide").innerHTML="";
+  if (typeof tournamentState !== "undefined") tournamentState = null;
   if(qs("teamsTabs")) qs("teamsTabs").style.display="none";
   window.activeTournament = null;
   window.teamsCurrentRound = 0;
@@ -167,6 +182,7 @@ function clearAll(){
 function resetAll(){
   if(!confirm("Reset everything?")) return;
   qs("entries").value="";
+  if (qs("tournamentName")) qs("tournamentName").value="";
   qs("courts").value=2;
   clearAll();
   clearTournamentData(); // Clear localStorage data
@@ -183,6 +199,7 @@ function generate(){
   const entries = qs("entries").value.split("\n").map(x=>x.trim()).filter(Boolean);
   const courts = readCourts();
   const keepScore = qs("keepScore") ? qs("keepScore").checked : true;
+  const name = qs("tournamentName") ? qs("tournamentName").value.trim() : "";
 
   // Check everything first, so a refused setup never wipes a tournament in progress
   if(courts === null){
@@ -204,7 +221,12 @@ function generate(){
   }
 
   clearAll();
-  window.activeTournament = { mode, entries: entries.join("\n"), courts: String(courts), keepScore };
+  window.activeTournament = { mode, entries: entries.join("\n"), courts: String(courts), keepScore, name };
+
+  if(mode==="tournament"){
+    startTournament(entries, courts); // groups first, knockout drawn later
+    saveTournamentData();
+  }
 
   if(mode==="teams"){
     qs("teamsTabs").style.display="block";
@@ -237,7 +259,9 @@ function exportData() {
     return;
   }
   
-  if (mode === "teams") {
+  if (mode === "tournament") {
+    exportTournamentData(active ? active.name : "");
+  } else if (mode === "teams") {
     exportTeamsData(entries, courts);
   } else {
     exportAmericanoData(entries, courts);
@@ -249,6 +273,7 @@ function exportTeamsData(teams, courts) {
 
   // Header
   csvContent += "Pickleball Tournament Export\n\n";
+  if (window.activeTournament && window.activeTournament.name) csvContent += `Name;${csvCell(window.activeTournament.name)}\n`;
   csvContent += `Mode;"Singles/Teams"\n`;
   csvContent += `Teams;"${teams.join(", ")}"\n`;
   csvContent += `Courts;"${courts}"\n`;
@@ -314,6 +339,7 @@ function exportAmericanoData(players, courts) {
 
   // Header
   csvContent += "Pickleball Tournament Export\n\n";
+  if (window.activeTournament && window.activeTournament.name) csvContent += `Name;${csvCell(window.activeTournament.name)}\n`;
   csvContent += `Mode;${csvCell(ranked ? "Doubles (Americano - Ranked)" : "Doubles (Americano)")}\n`;
   csvContent += `Players;${csvCell(americanoState.players.join(", "))}\n`;
   csvContent += `Courts;"${americanoState.courts}"\n`;
@@ -412,7 +438,16 @@ function restoreFromStorage() {
     
     if (entries.length > 0 && courts !== null && findDuplicates(entries).length === 0
         && !notEnoughForCourts(mode, entries.length, courts)) {
-      window.activeTournament = { mode, entries: qs("entries").value, courts: String(courts), keepScore };
+      window.activeTournament = { mode, entries: qs("entries").value, courts: String(courts), keepScore,
+        name: qs("tournamentName") ? qs("tournamentName").value.trim() : "" };
+    }
+
+    // Tournament mode restores from its own saved state (draw, schedule and scores)
+    if (mode === "tournament" && window.savedTournament && Array.isArray(window.savedTournament.waves)) {
+      window.activeTournament = window.activeTournament || { mode, entries: qs("entries").value, courts: String(courts), keepScore: true,
+        name: qs("tournamentName") ? qs("tournamentName").value.trim() : "" };
+      restoreTournament(window.savedTournament);
+      return;
     }
 
     if (entries.length > 0 && courts !== null && findDuplicates(entries).length === 0) {

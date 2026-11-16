@@ -7,7 +7,7 @@ window.activeTournament = window.activeTournament || null; // {mode, entries, co
 window.teamsCurrentRound = window.teamsCurrentRound || 0;  // Teams mode: index of the round "now playing"
 
 function hasTournament(){
-  return !!document.querySelector("#rounds > .round, #americanoOutput > .round");
+  return !!document.querySelector("#rounds > .round, #americanoOutput > .round, #tournamentOutput > .round");
 }
 
 /* ---------- Setup screen ---------- */
@@ -36,9 +36,10 @@ function syncSetupUI(){
   document.querySelectorAll(".court-btn").forEach(b =>
     b.setAttribute("aria-pressed", String(Number(b.dataset.courts) === courts)));
 
-  const one = isTeams ? "team" : "player";
-  const many = isTeams ? "teams" : "players";
-  qs("entriesLabel").textContent = isTeams ? "Teams or players, one per line" : "Players, one per line";
+  const isCup = mode === "tournament";
+  const one = isTeams ? "team" : isCup ? "entry" : "player";
+  const many = isTeams ? "teams" : isCup ? "entries" : "players";
+  qs("entriesLabel").textContent = (isTeams || isCup) ? "Teams or players, one per line" : "Players, one per line";
   qs("entryCount").textContent = n ? `${n} ${n === 1 ? one : many}` : "";
 
   qs("keepScoreRow").hidden = !isTeams;
@@ -57,6 +58,16 @@ function syncSetupUI(){
     const short = notEnoughForCourts(mode, n, courts);
     if (short) {
       html += `<p class="hint">${escapeHtml(short)}</p>`;
+    } else if (isCup) {
+      // Groups first, then a knockout
+      const plan = tournamentPlan(n);
+      const lo = Math.min(...plan.sizes), hi = Math.max(...plan.sizes);
+      const stat = (num, label) => `<div><div class="stat-num">${num}</div><div class="stat-label">${label}</div></div>`;
+      html = `<h2>Tournament plan</h2><div class="stats">`
+        + stat(plan.G, `groups of ${lo === hi ? lo : lo + " to " + hi}`)
+        + stat(plan.groupGames, "group games")
+        + stat(plan.B, "in the knockout")
+        + `</div><p class="hint plan-rule">${escapeHtml(tournamentRuleText(plan))}</p>`;
     } else {
       const onCourt = courts * (isTeams ? 2 : 4);
       const stat = (num, label) => `<div><div class="stat-num">${num}</div><div class="stat-label">${label}</div></div>`;
@@ -88,6 +99,7 @@ function toggleSetup(){
     qs("entries").value = a.entries;
     qs("courts").value = a.courts;
     qs("keepScore").checked = a.keepScore !== false;
+    qs("tournamentName").value = a.name || "";
     hideWarning();
   }
   refreshPlayView();
@@ -215,7 +227,8 @@ const UPCOMING_SHOWN = 2; // later rounds are folded behind "Show all upcoming r
 function refreshPlayView(){
   const teamRounds = [...document.querySelectorAll("#rounds > .round")];
   const amRounds = [...document.querySelectorAll("#americanoOutput > .round")];
-  const playing = teamRounds.length > 0 || amRounds.length > 0;
+  const cupRounds = [...document.querySelectorAll("#tournamentOutput > .round")];
+  const playing = teamRounds.length > 0 || amRounds.length > 0 || cupRounds.length > 0;
   if (!playing) setupOpen = true;
 
   qs("playPanel").hidden = !playing;
@@ -229,12 +242,19 @@ function refreshPlayView(){
     body.classList.remove("has-side", "view-side", "has-next-bar");
     qs("rounds").classList.remove("show-all");
     qs("americanoOutput").classList.remove("show-all");
+    qs("tournamentOutput").classList.remove("show-all");
+    document.title = "PickleBall Scheduler";
     return;
   }
 
   const active = window.activeTournament || {};
   let kind, container, rounds, currentIdx, showSide;
-  if (teamRounds.length) {
+  if (cupRounds.length) {
+    kind = "tournament"; container = qs("tournamentOutput"); rounds = cupRounds;
+    showSide = true;
+    tournamentState.current = Math.max(0, Math.min(tournamentState.current || 0, rounds.length - 1));
+    currentIdx = tournamentState.current;
+  } else if (teamRounds.length) {
     kind = "teams"; container = qs("rounds"); rounds = teamRounds;
     showSide = active.keepScore !== false;
     if (!(window.teamsCurrentRound >= 0)) {
@@ -278,16 +298,27 @@ function refreshPlayView(){
 
   // Header
   const head = container.querySelector(":scope > .play-head");
-  const isLast = kind === "teams" && currentIdx === rounds.length - 1;
-  head.querySelector(".eyebrow").textContent = isLast ? "Final round" : "Now playing";
-  head.querySelector(".round-title").innerHTML = `Round ${currentIdx + 1}`
-    + (kind === "teams" ? ` <span class="of">of ${rounds.length}</span>` : "");
+  const isCup = kind === "tournament";
+  const isLast = (kind === "teams" || isCup) && currentIdx === rounds.length - 1;
+  // Tournament: the group stage ends with the knockout draw, not with a "final round"
+  const cupGroupEnd = isCup && !tournamentState.ko && isLast;
+  const cupMissing = isCup ? tournamentGroupProgress().missing : 0;
+  head.querySelector(".eyebrow").textContent = isCup
+    ? (tournamentState.ko && isLast ? "Last round" : "Now playing")
+    : (isLast ? "Final round" : "Now playing");
+  head.querySelector(".round-title").innerHTML = isCup
+    ? escapeHtml(rounds[currentIdx].dataset.title)
+    : `Round ${currentIdx + 1}` + (kind === "teams" ? ` <span class="of">of ${rounds.length}</span>` : "");
+  head.classList.toggle("long-title", isCup);
 
   // Progress (Teams with scores): counted games that have a score
   const prog = head.querySelector(".progress-wrap");
   let played = 0, total = 0;
-  if (kind === "teams" && showSide) {
-    rounds.forEach(r => r.querySelectorAll(".court").forEach(c => {
+  if ((kind === "teams" && showSide) || isCup) {
+    if (isCup) {
+      const pr = tournamentProgress();
+      played = pr.done; total = pr.total;
+    } else rounds.forEach(r => r.querySelectorAll(".court").forEach(c => {
       if (c.dataset.bonus) return;
       total++;
       const sc = courtScore(c);
@@ -304,13 +335,17 @@ function refreshPlayView(){
 
   // Next round button + "x of y scores entered"
   const nextWrap = head.querySelector(".next-wrap");
-  const canNext = kind === "teams"
-    ? !isLast
+  const canNext = isCup ? (!isLast || cupGroupEnd)
+    : kind === "teams" ? !isLast
     : rounds.length <= americanoState.players.length * 2; // same limit as before
   nextWrap.hidden = !canNext;
   const boxes = [...rounds[currentIdx].querySelectorAll(".court")].map(courtScore).filter(Boolean);
-  nextWrap.querySelector(".next-note").textContent = boxes.length
-    ? `${boxes.filter(s => s.both).length} of ${boxes.length} scores entered` : "";
+  const nextBtn = nextWrap.querySelector(".next-round-btn");
+  nextBtn.textContent = cupGroupEnd ? "Draw knockout" : "Next round";
+  nextBtn.disabled = cupGroupEnd && cupMissing > 0;
+  nextWrap.querySelector(".next-note").textContent = cupGroupEnd && cupMissing > 0
+    ? `${cupMissing} group ${cupMissing === 1 ? "score" : "scores"} still to enter`
+    : boxes.length ? `${boxes.filter(s => s.both).length} of ${boxes.length} scores entered` : "";
   body.classList.toggle("has-next-bar", canNext);
 
   // Side panel (scoreboard / leaderboard) and the phone tabs
@@ -318,32 +353,47 @@ function refreshPlayView(){
   qs("viewTabs").hidden = !showSide;
   body.classList.toggle("has-side", showSide);
   if (!showSide) body.classList.remove("view-side");
-  const sideName = kind === "teams" ? "Scoreboard" : "Leaderboard";
+  const sideName = isCup ? "Standings" : kind === "teams" ? "Scoreboard" : "Leaderboard";
   qs("sideTitle").textContent = sideName;
   qs("sideTabBtn").textContent = sideName;
   qs("score").hidden = kind !== "teams";
   qs("americanoRankings").hidden = kind !== "ranked";
-  qs("sideNote").textContent = kind === "teams"
-    ? `${played} of ${total} games`
+  qs("tournamentSide").hidden = !isCup;
+  qs("sideNote").textContent = isCup ? (tournamentState.ko ? "Knockout" : "Group stage")
+    : kind === "teams" ? `${played} of ${total} games`
     : `Round ${rounds.length}`;
-  qs("sideFoot").textContent = kind === "teams"
-    ? "Ranked by wins, then points difference. Bonus games are not counted."
+  qs("sideFoot").textContent = isCup
+    ? tournamentRuleText(tournamentState.plan) + " Groups are ranked by wins, then points difference."
+    : kind === "teams" ? "Ranked by wins, then points difference. Bonus games are not counted."
     : "Rating is based on win rate and points difference.";
+  if (isCup) tournamentDecorate();
   document.querySelectorAll(".view-tab").forEach(t =>
     t.setAttribute("aria-pressed", String((t.dataset.view === "side") === body.classList.contains("view-side"))));
 
   // App bar summary
-  const count = kind === "teams"
-    ? (active.entries ? active.entries.split("\n").filter(Boolean).length : 0)
+  const count = isCup ? tournamentState.entries.length
+    : kind === "teams" ? (active.entries ? active.entries.split("\n").filter(Boolean).length : 0)
     : americanoState.players.length;
-  const courtCount = kind === "teams" ? Number(active.courts) : americanoState.courts;
-  const modeName = kind === "teams" ? "Singles / Teams" : kind === "ranked" ? "Ranked Americano" : "Americano";
-  qs("barSummary").textContent =
-    `${modeName} · ${count} ${kind === "teams" ? "teams" : "players"} · ${courtCount} ${courtCount === 1 ? "court" : "courts"}`;
+  const courtCount = isCup ? tournamentState.courts : kind === "teams" ? Number(active.courts) : americanoState.courts;
+  const modeName = isCup ? "Tournament" : kind === "teams" ? "Singles / Teams" : kind === "ranked" ? "Ranked Americano" : "Americano";
+  const title = (active.name || "").trim();
+  qs("barSummary").textContent = (title ? title + " · " : "")
+    + `${modeName} · ${count} ${isCup ? "entries" : kind === "teams" ? "teams" : "players"} · ${courtCount} ${courtCount === 1 ? "court" : "courts"}`;
+  document.title = title ? `${title} – PickleBall Scheduler` : "PickleBall Scheduler";
 }
 
 function nextRoundClick(){
-  if (document.querySelector("#rounds > .round")) {
+  if (document.querySelector("#tournamentOutput > .round")) {
+    // Tournament: step through the rounds; at the end of the groups, draw the knockout
+    const last = tournamentState.waves.length - 1;
+    if (!tournamentState.ko && tournamentState.current >= last) {
+      tournamentDrawKnockout(); // only does anything once every group score is in
+    } else {
+      tournamentState.current = Math.min(tournamentState.current + 1, last);
+      saveTournamentData();
+    }
+    refreshPlayView();
+  } else if (document.querySelector("#rounds > .round")) {
     // Teams: the whole schedule exists already, just move on to the next round
     const last = document.querySelectorAll("#rounds > .round").length - 1;
     window.teamsCurrentRound = Math.min((window.teamsCurrentRound || 0) + 1, last);
