@@ -6,18 +6,20 @@ let americanoState = {
   sitQueue: [],
   roundCounter: 0,
   rankedMode: false, // Whether to use ranking-based matchmaking
-  playerStats: {} // Individual player statistics for ranking
+  playerStats: {}, // Individual player statistics for ranking
+  rounds: [] // Persisted schedule: each generated round's {matches, sit}
 };
 
 function startAmericano(players, courts, rankedMode = false){
   // Shuffle players initially
-  americanoState.players = [...players].sort(() => Math.random() - 0.5);
+  americanoState.players = shuffled(players);
   americanoState.courts = courts;
   americanoState.playedPairs = {}; // Reset pairs count
   americanoState.playedOpponents = {}; // Reset opponents count
   americanoState.sitQueue = [...americanoState.players]; // Full queue initially
   americanoState.roundCounter = 0;
   americanoState.rankedMode = rankedMode;
+  americanoState.rounds = []; // Reset persisted schedule
   
   // Initialize player statistics
   americanoState.playerStats = {};
@@ -57,7 +59,7 @@ function americanoNextRound(){
     updateAmericanoRankings();
   }
 
-  const roundData = generateAmericanoRound();
+  const roundData = generateAmericanoRound(); // also appends to americanoState.rounds
   renderAmericanoRound(americanoState.roundCounter + 1, roundData);
 
   // Next round button
@@ -75,86 +77,25 @@ function americanoNextRound(){
   if(americanoState.rankedMode && americanoState.roundCounter === 1) {
     displayAmericanoRankings();
   }
+
+  // Persist the updated schedule/state so a page refresh reproduces it
+  if (typeof saveTournamentData === "function") saveTournamentData();
 }
 
 function generateAmericanoRound(){
-  const {players, courts, sitQueue, playedPairs, playedOpponents, roundCounter} = americanoState;
+  const {players, courts, playedPairs, playedOpponents} = americanoState;
   
   // Calculate how many can play (multiple of 4, limited by courts)
   const maxPlayable = Math.floor(players.length / 4) * 4;
   const actualPlaying = Math.min(courts * 4, maxPlayable);
   let sitCount = players.length - actualPlaying;
 
-  // BALANCED Sit-Out Selection: Fair rotation + occasional smart shuffling
-  let sitOut;
-  let newQueue;
-  
-  // Calculate sit-out ratio
-  const sitOutRatio = sitCount / players.length;
-  
-  // Every 3 rounds in high-sitout scenarios (>30%), do intelligent swaps
-  const useSmartAdjustment = sitOutRatio > 0.3 && roundCounter > 5 && roundCounter % 3 === 0;
-  
-  if (useSmartAdjustment) {
-    // Calculate partnership gaps
-    const partnershipGaps = {};
-    players.forEach(p => {
-      let unplayed = 0;
-      players.forEach(other => {
-        if (p !== other) {
-          const key = [p, other].sort().join("|");
-          if ((playedPairs[key] || 0) === 0) unplayed++;
-        }
-      });
-      partnershipGaps[p] = unplayed;
-    });
-    
-    // Use standard queue but with a small swap
-    // Swap one high-gap player into play position if they're about to sit
-    let modifiedQueue = [...sitQueue];
-    const wouldSit = modifiedQueue.slice(0, sitCount);
-    const wouldPlay = modifiedQueue.slice(sitCount);
-    
-    // Find player with highest gap who would sit
-    let maxGapSitter = null;
-    let maxGap = 0;
-    wouldSit.forEach(p => {
-      if (partnershipGaps[p] > maxGap) {
-        maxGap = partnershipGaps[p];
-        maxGapSitter = p;
-      }
-    });
-    
-    // Find player with lowest gap who would play
-    let minGapPlayer = null;
-    let minGap = Infinity;
-    wouldPlay.forEach(p => {
-      if (partnershipGaps[p] < minGap) {
-        minGap = partnershipGaps[p];
-        minGapPlayer = p;
-      }
-    });
-    
-    // Swap if the gap difference is meaningful (>3)
-    if (maxGapSitter && minGapPlayer && (maxGap - minGap) > 3) {
-      const sitterIdx = modifiedQueue.indexOf(maxGapSitter);
-      const playerIdx = modifiedQueue.indexOf(minGapPlayer);
-      // Swap positions
-      [modifiedQueue[sitterIdx], modifiedQueue[playerIdx]] = 
-      [modifiedQueue[playerIdx], modifiedQueue[sitterIdx]];
-    }
-    
-    sitOut = modifiedQueue.slice(0, sitCount);
-    newQueue = modifiedQueue.slice(sitCount);
-    newQueue.push(...sitOut);
-  } else {
-    // Standard fair rotation
-    sitOut = sitQueue.slice(0, sitCount);
-    newQueue = sitQueue.slice(sitCount);
-    newQueue.push(...sitOut);
-  }
-  
-  americanoState.sitQueue = newQueue;
+  // FAIR + MIXING sit-out selection.
+  // 1) Whoever has sat out the least sits next (sit-out counts never differ by more than 1).
+  // 2) Avoid making anyone sit two rounds in a row when it can be avoided.
+  // 3) Among equally-eligible players, pick the set that leaves the most fresh
+  //    partnerships on court. This stops the same groups being locked together.
+  const sitOut = chooseSitOuts(players, sitCount, americanoState.rounds, playedPairs);
 
   // Active players for this round
   const activePlayers = players.filter(p=>!sitOut.includes(p));
@@ -183,7 +124,89 @@ function generateAmericanoRound(){
     });
   });
 
-  return {matches,sit:sitOut};
+  const roundData = {matches, sit: sitOut};
+  americanoState.rounds.push(roundData); // Persist schedule (also drives sit-out fairness)
+  return roundData;
+}
+
+// Fisher-Yates shuffle (unbiased, unlike sort(() => Math.random() - 0.5))
+function shuffled(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// Decide who sits out this round.
+// Fairness first (fewest sit-outs so far, no back-to-back sits where avoidable),
+// then mixing (choose the sitters that leave the most never-partnered pairs on court).
+function chooseSitOuts(players, sitCount, pastRounds, playedPairs) {
+  if (sitCount <= 0) return [];
+
+  const sits = {};
+  players.forEach(p => (sits[p] = 0));
+  (pastRounds || []).forEach(r => (r.sit || []).forEach(p => { if (p in sits) sits[p]++; }));
+  const lastRound = pastRounds && pastRounds.length ? pastRounds[pastRounds.length - 1] : null;
+  const satLast = new Set(lastRound ? lastRound.sit : []);
+
+  // Fill from the lowest sit-count level upwards. Whole levels that fit must sit;
+  // the first level that does not fit becomes the pool we choose from.
+  const levels = [...new Set(Object.values(sits))].sort((a, b) => a - b);
+  const must = [];
+  let pool = [];
+  for (const lv of levels) {
+    const group = players.filter(p => sits[p] === lv);
+    if (must.length + group.length <= sitCount) must.push(...group);
+    else { pool = group; break; }
+  }
+  let k = sitCount - must.length;
+  if (k === 0) return must;
+
+  // Prefer players who did NOT sit last round
+  const fresh = pool.filter(p => !satLast.has(p));
+  const stale = pool.filter(p => satLast.has(p));
+  let chosenFixed = [...must];
+  let candidates;
+  let backToBackPenalty = 0;
+  if (fresh.length > k) {
+    candidates = fresh;                 // real choice without anyone sitting twice in a row
+  } else if (fresh.length === k && stale.length > 0) {
+    // Only one way to avoid back-to-back sits - and repeating it every round locks the
+    // same groups together forever (e.g. 8 players on 1 court). Allow the whole pool,
+    // but make each back-to-back sit cost something so it only happens when it mixes groups.
+    candidates = pool;
+    backToBackPenalty = 6;
+  } else if (fresh.length === k) {
+    candidates = fresh;
+  } else {
+    chosenFixed.push(...fresh);
+    k -= fresh.length;
+    candidates = stale;
+  }
+
+  // Sample subsets of candidates and keep the one that gives the best mix on court:
+  // first make sure every active player has someone new to partner, then maximise new pairs.
+  const keyOf = (a, b) => [a, b].sort().join("|");
+  let best = null, bestScore = -Infinity;
+  const tries = Math.min(120, 1 + candidates.length * 6);
+  for (let t = 0; t < tries; t++) {
+    const pick = shuffled(candidates).slice(0, k);
+    const sitSet = new Set([...chosenFixed, ...pick]);
+    const active = players.filter(p => !sitSet.has(p));
+    let newPairs = 0;
+    const hasNew = new Set();
+    for (let i = 0; i < active.length; i++)
+      for (let j = i + 1; j < active.length; j++)
+        if ((playedPairs[keyOf(active[i], active[j])] || 0) === 0) {
+          newPairs++; hasNew.add(active[i]); hasNew.add(active[j]);
+        }
+    const b2b = pick.filter(p => satLast.has(p)).length;
+    const score = hasNew.size * 10 + newPairs - b2b * backToBackPenalty + Math.random() * 0.5;
+    if (score > bestScore) { bestScore = score; best = pick; }
+  }
+  return [...chosenFixed, ...best];
 }
 
 // Enhanced Pairing Algorithm with Sit-Out Awareness (fixes 2-court issues)
@@ -194,7 +217,7 @@ function solveBestMatches(players, courts, playedPairs, playedOpponents, rankedM
   }
   
   // ENHANCED REGULAR mode: Prioritize unplayed pairs among ACTIVE players
-  const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+  const shuffledPlayers = shuffled(players);
   
   // Calculate global unplayed partnership counts (for prioritization)
   const unplayedCounts = {};
@@ -273,6 +296,32 @@ function solveBestMatches(players, courts, playedPairs, playedOpponents, rankedM
     console.error("No pairs could be formed!");
     return [];
   }
+
+  // Improve the greedy result: picking pairs one at a time can force the last players
+  // into a much-repeated partnership. Re-split any two pairs if that lowers total cost.
+  const pairCost = (a, b) => {
+    const k = [a, b].sort().join("|");
+    const n = playedPairs[k] || 0;
+    return n === 0 ? -(unplayedCounts[a] + unplayedCounts[b]) / 2 : Math.pow(100, n);
+  };
+  const mk = (a, b) => ({ p1: a, p2: b, key: [a, b].sort().join("|"), playCount: playedPairs[[a, b].sort().join("|")] || 0, cost: pairCost(a, b) });
+  let improvedPairs = true, guard = 0;
+  while (improvedPairs && guard++ < 50) {
+    improvedPairs = false;
+    for (let i = 0; i < selectedPairs.length; i++) {
+      for (let j = i + 1; j < selectedPairs.length; j++) {
+        const { p1: a, p2: b } = selectedPairs[i], { p1: c, p2: d } = selectedPairs[j];
+        const now = pairCost(a, b) + pairCost(c, d);
+        const alt1 = pairCost(a, c) + pairCost(b, d);
+        const alt2 = pairCost(a, d) + pairCost(b, c);
+        if (alt1 < now - 1e-9 && alt1 <= alt2) {
+          selectedPairs[i] = mk(a, c); selectedPairs[j] = mk(b, d); improvedPairs = true;
+        } else if (alt2 < now - 1e-9) {
+          selectedPairs[i] = mk(a, d); selectedPairs[j] = mk(b, c); improvedPairs = true;
+        }
+      }
+    }
+  }
   
   // Group pairs into matches, minimizing opponent repetition
   const matchCombinations = findBestMatchPairing(selectedPairs, playedOpponents, false, playerStats);
@@ -280,59 +329,75 @@ function solveBestMatches(players, courts, playedPairs, playedOpponents, rankedM
   return matchCombinations;
 }
 
-// RANKED MODE: Skill-first matching algorithm
+// RANKED MODE: skill-based courts with balanced teams.
+// 1) Players are grouped into courts of 4 by rating (strongest four together, next four, ...),
+//    so everyone plays people at their level.
+// 2) Within a court, the split is chosen to give the closest game (usually #1+#4 vs #2+#3),
+//    while avoiding repeat partners and repeat opponents.
+// 3) A local search swaps players between neighbouring courts when that removes repeats
+//    without mixing skill levels too much.
+const RANKED_WEIGHTS = {
+  partnerRepeat: 120,   // per previous partnership (squared count)
+  opponentRepeat: 15,   // per previous meeting as opponents
+  teamGap: 1,           // per rating point difference between the two teams
+  courtSpread: 0.35     // per rating point between strongest and weakest on a court
+};
+
+function rankedCourtCost(four, playedPairs, playedOpponents, playerStats) {
+  const r = p => (playerStats[p] && playerStats[p].rating) || 1000;
+  const key = (a, b) => [a, b].sort().join("|");
+  const [a, b, c, d] = four;
+  const splits = [[[a, b], [c, d]], [[a, c], [b, d]], [[a, d], [b, c]]];
+  let best = null;
+  for (const [A, B] of splits) {
+    const pRep = (playedPairs[key(A[0], A[1])] || 0) ** 2 + (playedPairs[key(B[0], B[1])] || 0) ** 2;
+    let oRep = 0;
+    A.forEach(x => B.forEach(y => { oRep += playedOpponents[key(x, y)] || 0; }));
+    const gap = Math.abs((r(A[0]) + r(A[1])) - (r(B[0]) + r(B[1]))) / 2;
+    const cost = pRep * RANKED_WEIGHTS.partnerRepeat + oRep * RANKED_WEIGHTS.opponentRepeat + gap * RANKED_WEIGHTS.teamGap;
+    if (!best || cost < best.cost) best = { cost, A, B };
+  }
+  const ratings = four.map(r);
+  best.cost += (Math.max(...ratings) - Math.min(...ratings)) * RANKED_WEIGHTS.courtSpread;
+  return best;
+}
+
 function solveRankedMatches(players, courts, playedPairs, playedOpponents, playerStats) {
-  // Sort players by rating (highest to lowest)
-  const sortedPlayers = [...players].sort((a, b) => {
-    const ratingA = playerStats[a]?.rating || 1000;
-    const ratingB = playerStats[b]?.rating || 1000;
-    return ratingB - ratingA;
-  });
-  
-  // Create skill-based pairs with rotation consideration
-  const pairs = [];
-  const usedPlayers = new Set();
-  
-  // Strategy: Pair players with similar ratings, but avoid recent repeats
-  for (let i = 0; i < sortedPlayers.length; i++) {
-    if (usedPlayers.has(sortedPlayers[i])) continue;
-    
-    const p1 = sortedPlayers[i];
-    let bestPartner = null;
-    let bestPartnerScore = Infinity;
-    
-    // Find best partner for p1
-    for (let j = i + 1; j < sortedPlayers.length; j++) {
-      if (usedPlayers.has(sortedPlayers[j])) continue;
-      
-      const p2 = sortedPlayers[j];
-      const key = [p1, p2].sort().join("|");
-      const repeatCount = playedPairs[key] || 0;
-      
-      const rating1 = playerStats[p1]?.rating || 1000;
-      const rating2 = playerStats[p2]?.rating || 1000;
-      const ratingDiff = Math.abs(rating1 - rating2);
-      
-      // Score: Heavy penalty for repeats, moderate penalty for skill mismatch
-      const score = (repeatCount * 100) + (ratingDiff * 0.5);
-      
-      if (score < bestPartnerScore) {
-        bestPartnerScore = score;
-        bestPartner = p2;
+  const r = p => (playerStats[p] && playerStats[p].rating) || 1000;
+  // Shuffle first so equal ratings (e.g. round 1) are ordered randomly
+  const sorted = shuffled(players).sort((a, b) => r(b) - r(a));
+  const groups = [];
+  for (let i = 0; i + 3 < sorted.length; i += 4) groups.push(sorted.slice(i, i + 4));
+
+  const costs = groups.map(g => rankedCourtCost(g, playedPairs, playedOpponents, playerStats));
+  // Local search: swap players between courts if total cost drops
+  let improved = true, passes = 0;
+  while (improved && passes++ < 20) {
+    improved = false;
+    for (let g1 = 0; g1 < groups.length; g1++) {
+      for (let g2 = g1 + 1; g2 < groups.length; g2++) {
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j < 4; j++) {
+            const n1 = [...groups[g1]], n2 = [...groups[g2]];
+            [n1[i], n2[j]] = [n2[j], n1[i]];
+            const c1 = rankedCourtCost(n1, playedPairs, playedOpponents, playerStats);
+            const c2 = rankedCourtCost(n2, playedPairs, playedOpponents, playerStats);
+            if (c1.cost + c2.cost < costs[g1].cost + costs[g2].cost - 1e-9) {
+              groups[g1] = n1; groups[g2] = n2; costs[g1] = c1; costs[g2] = c2;
+              improved = true;
+            }
+          }
+        }
       }
     }
-    
-    if (bestPartner) {
-      pairs.push({ p1, p2: bestPartner, key: [p1, bestPartner].sort().join("|") });
-      usedPlayers.add(p1);
-      usedPlayers.add(bestPartner);
-    }
   }
-  
-  // Group pairs into matches with skill-based opponent matching
-  const matchCombinations = findBestMatchPairing(pairs, playedOpponents, true, playerStats);
-  
-  return matchCombinations;
+
+  // Strongest court first (Court 1 = top court)
+  const avg = g => g.reduce((s, p) => s + r(p), 0) / 4;
+  return groups
+    .map((g, i) => ({ g, best: costs[i] }))
+    .sort((x, y) => avg(y.g) - avg(x.g))
+    .map(({ best }) => ({ A: best.A, B: best.B }));
 }
 
 // Find the best way to pair teams against each other
@@ -444,8 +509,9 @@ function renderAmericanoRound(num,r){
   courtsDiv.className="courts";
   
   r.matches.forEach((m,i)=>{
-    const teamA = m.A.join(" & ");
-    const teamB = m.B.join(" & ");
+    // Escape names so characters like < > & in a name can't break the page
+    const teamA = m.A.map(escapeHtml).join(" &amp; ");
+    const teamB = m.B.map(escapeHtml).join(" &amp; ");
     
     if (americanoState.rankedMode) {
       // Ranked mode: Add score inputs
@@ -470,7 +536,7 @@ function renderAmericanoRound(num,r){
   if(r.sit.length){
     const sitDiv=document.createElement("div");
     sitDiv.className="sitout";
-    sitDiv.innerHTML=`<strong>Sit out:</strong> ${r.sit.join(", ")}`;
+    sitDiv.innerHTML=`<strong>Sit out:</strong> ${r.sit.map(escapeHtml).join(", ")}`;
     div.appendChild(sitDiv);
   }
   qs("americanoOutput").appendChild(div);
@@ -499,7 +565,7 @@ function updateAmericanoRankings() {
   });
   
   // Process all completed rounds
-  document.querySelectorAll('.round').forEach(roundDiv => {
+  qs("americanoOutput").querySelectorAll('.round').forEach(roundDiv => {
     const roundNum = parseInt(roundDiv.dataset.roundNum);
     
     roundDiv.querySelectorAll('.court').forEach(courtDiv => {
@@ -512,18 +578,14 @@ function updateAmericanoRankings() {
       // Only process if scores are entered
       if (inputs[0].value === "" && inputs[1].value === "") return;
       
-      // Extract player names from vs text
-      const vsDiv = courtDiv.querySelector('.vs');
-      const vsText = vsDiv.textContent;
-      const parts = vsText.split('vs');
-      
-      if (parts.length !== 2) return;
-      
-      const teamAText = parts[0].trim();
-      const teamBText = parts[1].trim();
-      
-      const teamA = teamAText.split('&').map(p => p.trim());
-      const teamB = teamBText.split('&').map(p => p.trim());
+      // Look the players up from the stored schedule (never parse the on-screen
+      // text: names containing "vs" or "&" would be split incorrectly)
+      const courtIdx = [...roundDiv.querySelectorAll('.court')].indexOf(courtDiv);
+      const match = americanoState.rounds[roundNum - 1] &&
+                    americanoState.rounds[roundNum - 1].matches[courtIdx];
+      if (!match) return;
+      const teamA = match.A;
+      const teamB = match.B;
       
       // Update stats for all players
       teamA.forEach(player => {
@@ -567,6 +629,9 @@ function updateAmericanoRankings() {
   
   // Update the rankings display
   displayAmericanoRankings();
+
+  // Persist entered scores so they survive a page refresh
+  if (typeof saveTournamentData === "function") saveTournamentData();
 }
 
 // Display the rankings table
@@ -616,7 +681,7 @@ function displayAmericanoRankings() {
     html += `
       <tr class="${tier}">
         <td>${rank}</td>
-        <td><strong>${player}</strong></td>
+        <td><strong>${escapeHtml(player)}</strong></td>
         <td>${Math.round(stats.rating)}</td>
         <td>${stats.gamesPlayed}</td>
         <td>${stats.gamesWon}-${stats.gamesLost}</td>
@@ -676,6 +741,65 @@ function showAmericanoStats() {
   console.log(`  Opponents - Min: ${minOpponent}, Max: ${maxOpponent}, Avg: ${avgOpponents.toFixed(2)}, Range: ${maxOpponent - minOpponent}`);
   console.log("\nNote: Lower range values indicate better fairness/rotation.");
   console.log("Call showAmericanoStats() in console to see these stats anytime.\n");
+}
+
+// Rebuild an in-progress Americano tournament from persisted data (page refresh)
+function restoreAmericano(saved, courts){
+  americanoState.players = saved.players || [];
+  americanoState.courts = courts;
+  americanoState.playedPairs = saved.playedPairs || {};
+  americanoState.playedOpponents = saved.playedOpponents || {};
+  americanoState.sitQueue = saved.sitQueue || [...americanoState.players];
+  americanoState.rankedMode = !!saved.rankedMode;
+  americanoState.rounds = [];
+  americanoState.roundCounter = 0;
+
+  // Fresh stats; ratings get recomputed from restored scores below
+  americanoState.playerStats = {};
+  americanoState.players.forEach(p => {
+    americanoState.playerStats[p] = {
+      gamesPlayed: 0, gamesWon: 0, gamesLost: 0,
+      pointsFor: 0, pointsAgainst: 0, pointDiff: 0, rating: 1000
+    };
+  });
+
+  // Re-render every saved round exactly as it was scheduled
+  (saved.rounds || []).forEach(rd => {
+    americanoState.rounds.push(rd);
+    renderAmericanoRound(americanoState.roundCounter + 1, rd);
+    americanoState.roundCounter++;
+  });
+
+  // Restore entered scores (ranked mode) into the recreated inputs
+  if (americanoState.rankedMode && Array.isArray(saved.scores)) {
+    saved.scores.forEach(s => {
+      const roundDiv = qs("americanoOutput")
+        .querySelector(`.round[data-round-num="${s.round}"]`);
+      if (!roundDiv) return;
+      const courtDiv = roundDiv.querySelectorAll(".court")[s.court];
+      if (!courtDiv) return;
+      const inputs = courtDiv.querySelectorAll(".americano-score-input");
+      if (inputs.length === 2) {
+        inputs[0].value = s.a;
+        inputs[1].value = s.b;
+      }
+    });
+  }
+
+  // Re-attach the "Next Round" button so play can continue
+  if (americanoState.roundCounter < americanoState.players.length * 2) {
+    const btn = document.createElement("button");
+    btn.textContent = "Next Round";
+    btn.className = "next-round-btn generate";
+    btn.style.marginTop = "20px";
+    btn.onclick = americanoNextRound;
+    qs("americanoOutput").appendChild(btn);
+  }
+
+  // Recompute ratings/standings from the restored scores
+  if (americanoState.rankedMode) {
+    updateAmericanoRankings();
+  }
 }
 
 // Backward compatibility
