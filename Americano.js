@@ -50,10 +50,6 @@ function startAmericano(players, courts, rankedMode = false){
 }
 
 function americanoNextRound(){
-  // Remove previous "Next Round" button if it exists
-  const oldBtn = qs("americanoOutput").querySelector(".next-round-btn");
-  if(oldBtn) oldBtn.remove();
-
   // In ranked mode, update rankings before generating next round (except first round)
   if(americanoState.rankedMode && americanoState.roundCounter > 0) {
     updateAmericanoRankings();
@@ -62,15 +58,7 @@ function americanoNextRound(){
   const roundData = generateAmericanoRound(); // also appends to americanoState.rounds
   renderAmericanoRound(americanoState.roundCounter + 1, roundData);
 
-  // Next round button
-  if(americanoState.roundCounter < americanoState.players.length*2){ // heuristic limit
-    const btn = document.createElement("button");
-    btn.textContent="Next Round";
-    btn.className = "next-round-btn generate"; // Use 'generate' class for blue styling
-    btn.style.marginTop = "20px";
-    btn.onclick=americanoNextRound;
-    qs("americanoOutput").appendChild(btn);
-  }
+  // The "Next round" button lives in the round header (built by Ui.js)
   americanoState.roundCounter++;
   
   // Initialize rankings display in ranked mode
@@ -80,6 +68,9 @@ function americanoNextRound(){
 
   // Persist the updated schedule/state so a page refresh reproduces it
   if (typeof saveTournamentData === "function") saveTournamentData();
+
+  // Put the new round on top and fold the previous one away
+  if (typeof refreshPlayView === "function") refreshPlayView();
 }
 
 function generateAmericanoRound(){
@@ -502,42 +493,61 @@ function renderAmericanoRound(num,r){
   div.className="round";
   div.dataset.roundNum = num;
   
-  // Use h3 for better structure, matching CSS expectations if any (though CSS targets .round-header h3)
-  div.innerHTML=`<div class="round-header"><h3>Round ${num}</h3></div>`;
+  // One-line summary (shown when the round is collapsed) + full body
+  div.innerHTML=`<div class="round-summary">
+      <div class="rs-name">Round ${num}</div>
+      <div class="rs-games"></div>
+      <button type="button" class="rs-toggle btn-link">Open</button>
+    </div>
+    <div class="round-body">
+      <div class="round-header"><h3>Round ${num}</h3></div>
+    </div>`;
+  const body = div.querySelector(".round-body");
   
   const courtsDiv=document.createElement("div");
   courtsDiv.className="courts";
   
   r.matches.forEach((m,i)=>{
     // Escape names so characters like < > & in a name can't break the page
-    const teamA = m.A.map(escapeHtml).join(" &amp; ");
-    const teamB = m.B.map(escapeHtml).join(" &amp; ");
+    const teamA = m.A.map(escapeHtml).join("<br>");
+    const teamB = m.B.map(escapeHtml).join("<br>");
+    const labelA = escapeHtml(m.A.join(" & "));
+    const labelB = escapeHtml(m.B.join(" & "));
     
     if (americanoState.rankedMode) {
       // Ranked mode: Add score inputs
-      courtsDiv.innerHTML+=`<div class="court" data-court="${i}" data-round="${num}">
-        <div class="court-title">Court ${i+1}</div>
-        <div class="vs">${teamA}<br>vs<br>${teamB}</div>
-        <div class="score-container">
-          <input class="americano-score-input" type="number" placeholder="0" min="0" data-team="A"> :
-          <input class="americano-score-input" type="number" placeholder="0" min="0" data-team="B">
+      courtsDiv.innerHTML+=`<div class="court" data-court="${i}" data-round="${num}" data-label-a="${labelA}" data-label-b="${labelB}">
+        <div class="court-head"><h3 class="court-title">Court ${i+1}</h3><span class="court-status"></span></div>
+        <div class="match">
+          <div class="team team-a">${teamA}</div>
+          <div class="scores score-container">
+            <input class="americano-score-input score-box" type="number" inputmode="numeric" placeholder="0" min="0" data-team="A" aria-label="Court ${i+1} score, ${labelA}">
+            <span class="colon">:</span>
+            <input class="americano-score-input score-box" type="number" inputmode="numeric" placeholder="0" min="0" data-team="B" aria-label="Court ${i+1} score, ${labelB}">
+          </div>
+          <div class="team team-b">${teamB}</div>
         </div>
       </div>`;
     } else {
       // Regular mode: No score inputs
-      courtsDiv.innerHTML+=`<div class="court">
-        <div class="court-title">Court ${i+1}</div>
-        <div class="vs">${teamA}<br>vs<br>${teamB}</div>
+      courtsDiv.innerHTML+=`<div class="court" data-label-a="${labelA}" data-label-b="${labelB}">
+        <div class="court-head"><h3 class="court-title">Court ${i+1}</h3></div>
+        <div class="match">
+          <div class="team team-a">${teamA}</div>
+          <div class="versus">v</div>
+          <div class="team team-b">${teamB}</div>
+        </div>
       </div>`;
     }
   });
-  div.appendChild(courtsDiv);
+  body.appendChild(courtsDiv);
   
   if(r.sit.length){
     const sitDiv=document.createElement("div");
     sitDiv.className="sitout";
-    sitDiv.innerHTML=`<strong>Sit out:</strong> ${r.sit.map(escapeHtml).join(", ")}`;
-    div.appendChild(sitDiv);
+    sitDiv.innerHTML=`<span class="sitout-label">Sitting out this round</span>
+      <span class="chips">${r.sit.map(p => `<span class="chip">${escapeHtml(p)}</span>`).join("")}</span>`;
+    body.appendChild(sitDiv);
   }
   qs("americanoOutput").appendChild(div);
   
@@ -634,65 +644,43 @@ function updateAmericanoRankings() {
   if (typeof saveTournamentData === "function") saveTournamentData();
 }
 
-// Display the rankings table
+// Display the rankings table (in the side panel)
 function displayAmericanoRankings() {
-  let rankDiv = qs("americanoRankings");
-  
-  if (!rankDiv) {
-    // Create rankings div if it doesn't exist
-    rankDiv = document.createElement("div");
-    rankDiv.id = "americanoRankings";
-    rankDiv.style.marginTop = "20px";
-    
-    // Insert before the first round
-    const firstRound = qs("americanoOutput").querySelector('.round');
-    if (firstRound) {
-      qs("americanoOutput").insertBefore(rankDiv, firstRound);
-    } else {
-      qs("americanoOutput").appendChild(rankDiv);
-    }
-  }
+  const rankDiv = qs("americanoRankings");
+  if (!rankDiv) return;
   
   // Sort players by rating
   const sortedPlayers = [...americanoState.players].sort((a, b) => {
     return americanoState.playerStats[b].rating - americanoState.playerStats[a].rating;
   });
+
+  // Highlight the top three only once at least one score has been entered
+  const anyGames = sortedPlayers.some(p => americanoState.playerStats[p].gamesPlayed > 0);
   
   let html = `
-    <div class="rankings-container">
-      <h3>Player Rankings</h3>
-      <table class="rankings-table">
+      <table class="board rankings-table${anyGames ? " has-games" : ""}">
         <tr>
-          <th>Rank</th>
           <th>Player</th>
-          <th>Rating</th>
-          <th>Games</th>
           <th>W-L</th>
           <th>Points</th>
           <th>Diff</th>
+          <th>Rating</th>
         </tr>`;
   
-  sortedPlayers.forEach((player, index) => {
+  sortedPlayers.forEach(player => {
     const stats = americanoState.playerStats[player];
-    const rank = index + 1;
-    const tier = rank <= sortedPlayers.length / 3 ? 'top-tier' : 
-                 rank <= sortedPlayers.length * 2 / 3 ? 'mid-tier' : 'low-tier';
-    
     html += `
-      <tr class="${tier}">
-        <td>${rank}</td>
-        <td><strong>${escapeHtml(player)}</strong></td>
-        <td>${Math.round(stats.rating)}</td>
-        <td>${stats.gamesPlayed}</td>
+      <tr>
+        <td>${escapeHtml(player)}</td>
         <td>${stats.gamesWon}-${stats.gamesLost}</td>
         <td>${stats.pointsFor}-${stats.pointsAgainst}</td>
         <td>${stats.pointDiff > 0 ? '+' : ''}${stats.pointDiff}</td>
+        <td>${Math.round(stats.rating)}</td>
       </tr>`;
   });
   
   html += `
-      </table>
-    </div>`;
+      </table>`;
   
   rankDiv.innerHTML = html;
 }
@@ -786,15 +774,7 @@ function restoreAmericano(saved, courts){
     });
   }
 
-  // Re-attach the "Next Round" button so play can continue
-  if (americanoState.roundCounter < americanoState.players.length * 2) {
-    const btn = document.createElement("button");
-    btn.textContent = "Next Round";
-    btn.className = "next-round-btn generate";
-    btn.style.marginTop = "20px";
-    btn.onclick = americanoNextRound;
-    qs("americanoOutput").appendChild(btn);
-  }
+  // The "Next round" button is rebuilt with the round header (Ui.js)
 
   // Recompute ratings/standings from the restored scores
   if (americanoState.rankedMode) {
