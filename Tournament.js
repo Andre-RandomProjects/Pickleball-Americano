@@ -1,5 +1,8 @@
 
 function generateTeamRounds(teams, courts) {
+    // Guard: 0, negative or non-numeric courts would loop forever below
+    courts = Math.floor(Number(courts));
+    if (!(courts >= 1)) return [];
     // 1. Generate a flat list of all unique matches using the Circle Method
     let list = [...teams];
     if (list.length % 2 !== 0) {
@@ -38,21 +41,50 @@ function generateTeamRounds(teams, courts) {
         const sitOutTeams = teams.filter(team => !playingTeams.has(team));
         
         physicalRounds.push({
-                    matches: roundMatches,
-                    sitOut: sitOutTeams
-                });
-            }
-            return physicalRounds;
-        }
+            matches: roundMatches,
+            bonus: [],
+            sitOut: sitOutTeams
+        });
+    }
 
-function renderTeamRound(num, r) {
+    // 3. Every selected court must be used. If the last round is short, fill the empty
+    //    courts with BONUS rematches between teams sitting out. Bonus games are shown with
+    //    score boxes but are NOT counted on the scoreboard, so standings stay fair.
+    const lastRound = physicalRounds[physicalRounds.length - 1];
+    if (lastRound && lastRound.matches.length < courts) {
+        // Prefer the teams that have sat out most, then those who played longest ago
+        const sits = {}, lastPlayed = {};
+        teams.forEach(t => { sits[t] = 0; lastPlayed[t] = -1; });
+        physicalRounds.forEach((r, i) => {
+            r.sitOut.forEach(t => sits[t]++);
+            r.matches.forEach(([a, b]) => { lastPlayed[a] = i; lastPlayed[b] = i; });
+        });
+        const prevRound = physicalRounds.length - 2;
+        const pool = [...lastRound.sitOut].sort((x, y) =>
+            (sits[y] - sits[x]) || (lastPlayed[x] - lastPlayed[y]));
+        while (lastRound.matches.length + lastRound.bonus.length < courts && pool.length >= 2) {
+            const a = pool.shift();
+            // Partner choice: avoid a team a just met in the previous round if possible
+            let idx = pool.findIndex(b => !(physicalRounds[prevRound] &&
+                physicalRounds[prevRound].matches.some(m => m.includes(a) && m.includes(b))));
+            if (idx < 0) idx = 0;
+            const b = pool.splice(idx, 1)[0];
+            lastRound.bonus.push([a, b]);
+        }
+        const bonusTeams = new Set(lastRound.bonus.flat());
+        lastRound.sitOut = lastRound.sitOut.filter(t => !bonusTeams.has(t));
+    }
+    return physicalRounds;
+}
+
+function renderTeamRound(num, r, totalCourts) {
     const div = document.createElement("div");
     div.className = "round";
     div.innerHTML = `<div class="round-header"><h3>Round ${num}</h3></div>`;
     const courtsDiv = document.createElement("div");
     courtsDiv.className = "courts";
 
-    const totalCourts = parseInt(qs("courts").value);
+    if (!totalCourts) totalCourts = parseInt(qs("courts").value) || r.matches.length;
     
     // Display matches
     // If matches > totalCourts, what to do?
@@ -62,9 +94,9 @@ function renderTeamRound(num, r) {
     
     r.matches.forEach((m, i) => {
         courtsDiv.innerHTML += `
-      <div class="court">
+      <div class="court" data-team-a="${escapeHtml(m[0])}" data-team-b="${escapeHtml(m[1])}">
         <div class="court-title">Court ${i + 1}</div>
-        <div class="vs">${m[0]} vs ${m[1]}</div>
+        <div class="vs">${escapeHtml(m[0])} vs ${escapeHtml(m[1])}</div>
         <div>
           <input class="score-input" type="number" placeholder="0"> :
           <input class="score-input" type="number" placeholder="0">
@@ -72,21 +104,27 @@ function renderTeamRound(num, r) {
       </div>`;
     });
 
-    // Fill unused courts if any
-    for (let i = r.matches.length; i < totalCourts; i++) {
+    // Bonus rematches fill any courts left over in the final round (not counted)
+    (r.bonus || []).forEach((m, j) => {
+        const i = r.matches.length + j;
         courtsDiv.innerHTML += `
-      <div class="court" style="background:#ffe0e0; opacity:0.5;">
-        <div class="court-title">Court ${i + 1}</div>
-        <div class="vs">Unused</div>
+      <div class="court bonus-court" data-bonus="1" data-team-a="${escapeHtml(m[0])}" data-team-b="${escapeHtml(m[1])}">
+        <div class="court-title">Court ${i + 1} &middot; Bonus</div>
+        <div class="vs">${escapeHtml(m[0])} vs ${escapeHtml(m[1])}</div>
+        <div>
+          <input class="score-input" type="number" placeholder="0"> :
+          <input class="score-input" type="number" placeholder="0">
+        </div>
+        <div class="bonus-note">Friendly rematch - not counted</div>
       </div>`;
-    }
+    });
 
     div.appendChild(courtsDiv);
     
     if(r.sitOut.length > 0) {
         const sit = document.createElement("div");
         sit.className = "sitout";
-        sit.innerHTML = `<strong>Sit out:</strong> ${r.sitOut.join(", ")}`;
+        sit.innerHTML = `<strong>Sit out:</strong> ${r.sitOut.map(escapeHtml).join(", ")}`;
         div.appendChild(sit);
     }
     
@@ -102,18 +140,14 @@ function buildScoreboard(teams) {
         teams.forEach(t => data[t] = { won: 0, lost: 0, points: 0, diff: 0 });
 
         // Gather scores
-        document.querySelectorAll(".court").forEach(c => {
-            const vs = c.querySelector(".vs");
+        document.querySelectorAll("#rounds .court").forEach(c => {
             const inputs = c.querySelectorAll(".score-input");
-            if (!vs || inputs.length !== 2) return;
-            
-            const text = vs.textContent;
-            if(text === "Unused") return;
-            
-            const parts = text.split(" vs ");
-            if(parts.length !== 2) return;
-            
-            const [a, b] = parts;
+            if (inputs.length !== 2) return;
+            // Team names come from data attributes, not the display text,
+            // so names containing " vs " still work.
+            if (c.dataset.bonus) return; // bonus rematches don't count
+            const a = c.dataset.teamA, b = c.dataset.teamB;
+            if (a === undefined || b === undefined || !data[a] || !data[b]) return;
             const sa = parseInt(inputs[0].value) || 0;
             const sb = parseInt(inputs[1].value) || 0;
             
@@ -145,7 +179,7 @@ function buildScoreboard(teams) {
         let html = `<table><tr><th>Team</th><th>Won</th><th>Lost</th><th>Diff</th><th>Points</th></tr>`;
         sorted.forEach(t => {
             html += `<tr>
-                <td>${t}</td>
+                <td>${escapeHtml(t)}</td>
                 <td>${data[t].won}</td>
                 <td>${data[t].lost}</td>
                 <td>${data[t].diff > 0 ? "+" + data[t].diff : data[t].diff}</td>
@@ -175,9 +209,15 @@ function buildScoreboard(teams) {
     // Better to have a named function or check.
     
     // Let's use a global handler on #rounds or document that delegates.
+    // One global listener that always calls the CURRENT tournament's update.
+    // (Previously it kept calling the first tournament's update, so after pressing
+    // Generate again the scoreboard stopped working.)
+    window.currentScoreboardUpdate = update;
     if(!window.scoreboardListenerAdded){
         document.addEventListener("input", e => {
-            if (e.target.classList.contains("score-input")) update();
+            if (e.target.classList.contains("score-input") && window.currentScoreboardUpdate) {
+                window.currentScoreboardUpdate();
+            }
         });
         window.scoreboardListenerAdded = true;
     }
