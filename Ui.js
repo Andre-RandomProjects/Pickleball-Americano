@@ -231,7 +231,8 @@ function refreshPlayView(){
   const playing = teamRounds.length > 0 || amRounds.length > 0 || cupRounds.length > 0;
   if (!playing) setupOpen = true;
 
-  qs("playPanel").hidden = !playing;
+  // While "Edit setup" is open the rounds are put away, so the two never share the screen
+  qs("playPanel").hidden = !playing || setupOpen;
   qs("barActions").hidden = !playing;
   qs("setupPanel").hidden = playing && !setupOpen;
   qs("editSetupBtn").textContent = setupOpen ? "Close setup" : "Edit setup";
@@ -346,7 +347,7 @@ function refreshPlayView(){
   nextWrap.querySelector(".next-note").textContent = cupGroupEnd && cupMissing > 0
     ? `${cupMissing} group ${cupMissing === 1 ? "score" : "scores"} still to enter`
     : boxes.length ? `${boxes.filter(s => s.both).length} of ${boxes.length} scores entered` : "";
-  body.classList.toggle("has-next-bar", canNext);
+  body.classList.toggle("has-next-bar", canNext && !setupOpen);
 
   // Side panel (scoreboard / leaderboard) and the phone tabs
   qs("playSide").hidden = !showSide;

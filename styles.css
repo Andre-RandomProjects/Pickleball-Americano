@@ -1,4 +1,4 @@
-/* PickleBall Scheduler (v2.2.0) - colours come from the theme variables below */
+/* PickleBall Scheduler (v2.2.1) - colours come from the theme variables below */
 
 :root {
     /* Court green (default) */
@@ -396,6 +396,8 @@ textarea {
 .play-side {
     flex: 1 1 360px;
     min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;   /* a very wide table scrolls inside the panel, never the page */
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -539,7 +541,7 @@ table.board.group th:first-child { text-transform: none; letter-spacing: 0; font
 .round.current .round-summary { display: none; }
 .round.current .round-body { display: block; padding: 0; }
 
-.courts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.courts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 16px; }
 
 .court {
     background: var(--card);
@@ -646,7 +648,8 @@ table.board td:first-child {
     position: relative;
     width: auto;
     white-space: normal;
-    overflow-wrap: break-word;
+    overflow-wrap: anywhere;   /* long names wrap instead of pushing the table wider */
+    min-width: 96px;
     padding-left: 36px;
     font-weight: 500;
 }
@@ -686,6 +689,14 @@ table.board.has-games tr:nth-child(-n+4) td:last-child { border-radius: 0 8px 8p
     .btn-ghost { padding: 0 12px; font-size: 14px; }
 
     .container { padding: 24px 16px 40px; }
+
+    .play-side { padding: 16px 12px; }
+    table.board th { padding: 0 4px 8px; letter-spacing: 0; }
+    table.board td { padding: 9px 4px; font-size: 14px; }
+    table.board td:first-child { padding-left: 30px; min-width: 84px; }
+    table.board td:first-child::before { left: 6px; }
+    .round-summary { padding: 10px 8px 10px 14px; }
+    .rs-game { flex-basis: 100%; }
 
     .setup { gap: 22px; margin-top: 0; }
     .setup-head h1 { font-size: 34px; }
